@@ -1,0 +1,55 @@
+# --- Unity: генерируемое, в репозиторий не идёт ---
+# Library пересобирается из Assets при первом открытии проекта и весит гигабайты
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# --- среды разработки ---
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# --- сборки и крэши ---
+*.apk
+*.aab
+*.unitypackage
+*.app
+crashlytics-build.properties
+sysinfo.txt
+
+# --- рабочие файлы Blender ---
+# .blend пересобирается скриптом, держать бинарники в истории незачем
+*.blend
+*.blend1
+blender/probe_*.png
+blender/shot_*.png
+blender/anim_*.png
+blender/kit_*.png
+
+# --- отладочные рендеры из редактора ---
+/shot_*.png
+/probe_*.png
+
+# --- служебное ---
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,21 @@
+# Крупные бинарные ассеты держим в Git LFS: карта пересобирается часто, и
+# без LFS каждая её версия оседала бы в истории целиком по 16 МБ.
+*.fbx    filter=lfs diff=lfs merge=lfs -text
+*.glb    filter=lfs diff=lfs merge=lfs -text
+*.png    filter=lfs diff=lfs merge=lfs -text
+*.jpg    filter=lfs diff=lfs merge=lfs -text
+*.tga    filter=lfs diff=lfs merge=lfs -text
+*.wav    filter=lfs diff=lfs merge=lfs -text
+*.mp3    filter=lfs diff=lfs merge=lfs -text
+
+# Текстовые ассеты Unity - обычным текстом, чтобы были видны различия
+*.cs        text diff=csharp
+*.py        text
+*.shader    text
+*.unity     text
+*.prefab    text
+*.mat       text
+*.asset     text
+*.meta      text
+*.json      text
+*.md        text
