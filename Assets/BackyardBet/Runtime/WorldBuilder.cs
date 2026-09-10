@@ -31,7 +31,10 @@ namespace BackyardBet
             ("Potato",    0.180f),
         };
 
-        static readonly string[] Doors = { "Door", "GateLeaf" };
+        // HOU_FrontDoor - дверь дома из генератора: у неё есть родитель-петля
+        // и своя разметка. Старое имя Door оставлено на случай, если карту
+        // пересоберут прежней версией скрипта.
+        static readonly string[] Doors = { "Door", "GateLeaf", "HOU_FrontDoor" };
         static readonly string[] Mannequins = { "CH_Bo", "CH_Mia", "CH_Rex", "CH_Sam" };
 
         bool _built;
@@ -213,6 +216,14 @@ namespace BackyardBet
                     if (go.GetComponent<WaterAnimator>() == null)
                     { go.AddComponent<WaterAnimator>(); n++; }
                 }
+                else if (s.StartsWith("HouseCeilingLamp") || s.StartsWith("PorchLampBulb") ||
+                         s.StartsWith("WLampBulb"))
+                {
+                    // Лампы в модели есть, а источников света в FBX не бывает -
+                    // без этого в доме кромешная темнота.
+                    if (go.GetComponentInChildren<Light>() == null)
+                    { AddRoomLight(go); n++; }
+                }
             }
             return n;
         }
@@ -260,6 +271,21 @@ namespace BackyardBet
             light.intensity = 3.2f;
             light.range = 9f;
             light.shadows = LightShadows.None;      // теней от каждого огня не тянем
+        }
+
+        /// <summary>Ровный тёплый свет от лампы - в комнатах и над мишенями.</summary>
+        static void AddRoomLight(GameObject lamp)
+        {
+            var go = new GameObject("RoomLight");
+            go.transform.SetParent(lamp.transform, false);
+            go.transform.localPosition = Vector3.down * 0.12f;
+
+            var light = go.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.92f, 0.78f);
+            light.intensity = 2.6f;
+            light.range = 11f;
+            light.shadows = LightShadows.None;
         }
 
         /// <summary>Без камеры до спавна игрока экран был бы чёрным.</summary>

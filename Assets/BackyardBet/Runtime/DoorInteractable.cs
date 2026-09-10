@@ -38,11 +38,25 @@ namespace BackyardBet
 
         void Awake() => ComputeHinge();
 
-        /// <summary>Петля - у края створки по её узкой стороне.</summary>
+        /// <summary>
+        /// Точка вращения створки.
+        ///
+        /// Если в модели есть родитель-петля (в генераторе это пустышка
+        /// *_Hinge), берём её - там пивот выставлен художником и он точнее
+        /// любой догадки. Иначе вычисляем сами: петля у края створки по её
+        /// узкой стороне.
+        /// </summary>
         void ComputeHinge()
         {
             _closedPos = transform.position;
             _closedRot = transform.rotation;
+
+            var parent = transform.parent;
+            if (parent != null && parent.name.EndsWith("_Hinge"))
+            {
+                _hinge = parent.position;
+                return;
+            }
 
             var rend = GetComponentInChildren<Renderer>();
             if (rend == null) { _hinge = _closedPos; return; }
