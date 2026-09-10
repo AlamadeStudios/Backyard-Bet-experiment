@@ -51,6 +51,7 @@ namespace BackyardBet
             new NetworkVariable<FixedString128Bytes>();
 
         LiarsDice _game;              // только на хосте
+        DiceCupShaker _cup;
         int[] _myDice = Array.Empty<int>();
         bool _pendingNextRound;
 
@@ -63,6 +64,16 @@ namespace BackyardBet
         public override void OnNetworkSpawn()
         {
             Instance = this;
+
+            // стакан на столе оживает у каждого локально: по сети едет только
+            // номер раунда и состояние партии, анимацию каждый играет сам
+            _cup = FindAnyObjectByType<DiceCupShaker>();
+            _round.OnValueChanged += (_, __) => { if (_cup != null) _cup.PlayShake(); };
+            _state.OnValueChanged += (_, s) =>
+            {
+                if (_cup != null && (DiceState)s == DiceState.Revealed) _cup.PlayReveal();
+            };
+
             if (IsServer)
             {
                 _game = new LiarsDice();

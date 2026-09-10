@@ -90,6 +90,22 @@ namespace BackyardBet
                     continue;
                 }
 
+                // --- стакан с костями: трясётся в начале раунда
+                if (Matches(n, "DiceCup"))
+                {
+                    if (go.GetComponent<DiceCupShaker>() == null)
+                        go.AddComponent<DiceCupShaker>();
+                    continue;
+                }
+
+                // --- стаканы бир-понга. Отбираем по высоте: на столе для
+                // понга они стоят пирамидой, а не валяются как мусор во дворе
+                if (Matches(n, "Cup") && go.transform.position.y > 0.5f)
+                {
+                    if (go.GetComponent<CupTarget>() == null)
+                        go.AddComponent<CupTarget>();
+                }
+
                 // --- подбираемый реквизит
                 foreach (var (baseName, mass) in Props)
                 {
@@ -108,6 +124,12 @@ namespace BackyardBet
 
                     if (go.GetComponent<PickupInteractable>() == null)
                         go.AddComponent<PickupInteractable>();
+
+                    // банки на стеллаже - цели для рогатки: считаются сбитыми,
+                    // когда реально уехали с места или завалились
+                    if (baseName == "Can" && go.GetComponent<KnockdownTarget>() == null)
+                        go.AddComponent<KnockdownTarget>();
+
                     props++;
                     break;
                 }
@@ -115,10 +137,84 @@ namespace BackyardBet
 
             int seats = ReplaceMannequins();
             EnsureSpectatorCamera();
+            int alive = Animate(map);
 
             Debug.Log(string.Format(
                 "[Backyard Bet] Мир собран: двери {0}, предметы {1}, мишени {2}, " +
-                "стол {3}, места {4}", doors, props, targets, table, seats));
+                "стол {3}, места {4}, анимаций {5}", doors, props, targets, table, seats, alive));
+        }
+
+        /// <summary>
+        /// Оживляет двор: огонь дрожит, мишень крутится, гирлянда и гамак
+        /// качаются, плавники ходят по кругу, вода рябит.
+        ///
+        /// Всё локальное и косметическое - по сети не идёт ничего.
+        /// </summary>
+        static int Animate(GameObject map)
+        {
+            int n = 0;
+            foreach (var t in map.GetComponentsInChildren<Transform>(true))
+            {
+                var go = t.gameObject;
+                string s = go.name;
+
+                if (s.StartsWith("Flame"))
+                {
+                    if (go.GetComponent<FlickerAnimator>() == null)
+                    {
+                        AddFireLight(go);
+                        go.AddComponent<FlickerAnimator>();
+                        n++;
+                    }
+                }
+                else if (s.StartsWith("AxeTarget"))
+                {
+                    if (go.GetComponent<SpinAnimator>() == null)
+                    {
+                        // мишень для топоров вращается вокруг своей оси на щите
+                        var sp = go.AddComponent<SpinAnimator>();
+                        sp.axis = Vector3.right;
+                        sp.degreesPerSecond = 30f;
+                        n++;
+                    }
+                }
+                else if (s.StartsWith("Fin"))
+                {
+                    if (go.GetComponent<OrbitAnimator>() == null)
+                    { go.AddComponent<OrbitAnimator>(); n++; }
+                }
+                else if (s.StartsWith("Bulb") || s.StartsWith("Flag"))
+                {
+                    if (go.GetComponent<SwayAnimator>() == null)
+                    {
+                        var sw = go.AddComponent<SwayAnimator>();
+                        sw.degrees = s.StartsWith("Flag") ? 9f : 3f;
+                        sw.speed = s.StartsWith("Flag") ? 1.8f : 0.9f;
+                        n++;
+                    }
+                }
+                else if (s.StartsWith("Hammock") || s.StartsWith("SwingRope"))
+                {
+                    if (go.GetComponent<SwayAnimator>() == null)
+                    {
+                        var sw = go.AddComponent<SwayAnimator>();
+                        sw.degrees = 5f;
+                        sw.speed = 0.6f;
+                        n++;
+                    }
+                }
+                else if (s.StartsWith("Boombox"))
+                {
+                    if (go.GetComponent<PulseAnimator>() == null)
+                    { go.AddComponent<PulseAnimator>(); n++; }
+                }
+                else if (s.StartsWith("PoolWater"))
+                {
+                    if (go.GetComponent<WaterAnimator>() == null)
+                    { go.AddComponent<WaterAnimator>(); n++; }
+                }
+            }
+            return n;
         }
 
         /// <summary>
@@ -139,6 +235,31 @@ namespace BackyardBet
                 made++;
             }
             return made;
+        }
+
+        /// <summary>
+        /// Живой огонёк к пламени.
+        ///
+        /// В FBX едут только меши и пустышки - источники света из Blender туда
+        /// не попадают вообще. Поэтому костёр и факелы светились бы только
+        /// собственным материалом, ничего вокруг не освещая. Свет вешаем сюда
+        /// же, чтобы FlickerAnimator подхватил его и модулировал вместе с
+        /// размером пламени.
+        /// </summary>
+        static void AddFireLight(GameObject flame)
+        {
+            if (flame.GetComponentInChildren<Light>() != null) return;
+
+            var go = new GameObject("FireLight");
+            go.transform.SetParent(flame.transform, false);
+            go.transform.localPosition = Vector3.up * 0.15f;
+
+            var light = go.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.72f, 0.38f);
+            light.intensity = 3.2f;
+            light.range = 9f;
+            light.shadows = LightShadows.None;      // теней от каждого огня не тянем
         }
 
         /// <summary>Без камеры до спавна игрока экран был бы чёрным.</summary>
