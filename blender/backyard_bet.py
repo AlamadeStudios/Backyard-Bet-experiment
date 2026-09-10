@@ -395,12 +395,62 @@ AY0, AY1 = 20.5, 29.5                  # annex span in y
 AH = 4.2                               # annex height
 WALL = 0.4
 
+def wall_with_openings(name, material, x0, x1, y, z0, z1, thickness, openings):
+    """Стена вдоль X с настоящими прямоугольными проёмами.
+
+    openings: [(центр по X, ширина, низ проёма, верх проёма)].
+
+    Собирается из плит: сплошные куски между проёмами плюс подоконная и
+    надпроёмная части. Раньше окна и дверь просто приставлялись к глухой
+    стене - снаружи они выглядели нарисованными, а внутрь свет не шёл и
+    пройти было нельзя.
+    """
+    holes = sorted(openings, key=lambda o: o[0])
+    edge = x0
+    for cx, w, hz0, hz1 in holes:
+        left, right = cx - w * 0.5, cx + w * 0.5
+        if left - edge > 0.01:                       # сплошной кусок слева от проёма
+            obj_from(bm_box(left - edge, thickness, z1 - z0, 0.08), name, material,
+                     loc=((edge + left) * 0.5, y, (z0 + z1) * 0.5))
+        if hz0 - z0 > 0.01:                          # подоконная часть
+            obj_from(bm_box(w, thickness, hz0 - z0, 0.06), name, material,
+                     loc=(cx, y, (z0 + hz0) * 0.5))
+        if z1 - hz1 > 0.01:                          # перемычка над проёмом
+            obj_from(bm_box(w, thickness, z1 - hz1, 0.06), name, material,
+                     loc=(cx, y, (hz1 + z1) * 0.5))
+        edge = right
+    if x1 - edge > 0.01:
+        obj_from(bm_box(x1 - edge, thickness, z1 - z0, 0.08), name, material,
+                 loc=((edge + x1) * 0.5, y, (z0 + z1) * 0.5))
+
+
 def build_house():
-    # ---- main block
+    # ---- main block.  This used to be one solid cube, so the visible front
+    # door could never lead anywhere.  Build a real shell with a doorway.
     obj_from(bm_box(HW + 1.0, HD + 1.0, 0.7, 0.08), "Found", mat['stone'],
              loc=(HX, HY, 0.25))
-    obj_from(bm_box(HW, HD, HH, 0.12), "Walls", mat['wall'],
-             loc=(HX, HY, 0.6 + HH * 0.5))
+    floor_z = 0.6
+    front_y, back_y = HY - HD * 0.5, HY + HD * 0.5
+    door_w, door_h = 2.20, 3.20
+    side_w = (HW - door_w) * 0.5
+    # Фасад строим с проёмами под дверь и оба окна: иначе окна оказываются
+    # замурованы в 0.4 м стены, а наружу торчат одни подоконники.
+    win_cx, win_w, win_h = 5.2, 2.2, 2.0
+    win_z = 0.6 + 3.1                                # центр окна по высоте
+    wall_with_openings(
+        "HouseFrontWall", mat['wall'],
+        HX - HW * 0.5, HX + HW * 0.5, front_y,
+        floor_z, floor_z + HH, WALL,
+        [(HX, door_w, floor_z, floor_z + door_h),
+         (HX - win_cx, win_w, win_z - win_h * 0.5, win_z + win_h * 0.5),
+         (HX + win_cx, win_w, win_z - win_h * 0.5, win_z + win_h * 0.5)])
+    obj_from(bm_box(HW, WALL, HH, 0.10), "HouseBackWall", mat['wall'],
+             loc=(HX, back_y, floor_z + HH * 0.5))
+    for sx in (-1, 1):
+        obj_from(bm_box(WALL, HD - 2 * WALL, HH, 0.10), "HouseSideWall", mat['wall'],
+                 loc=(HX + sx * (HW * 0.5 - WALL * 0.5), HY, floor_z + HH * 0.5))
+    obj_from(bm_box(HW - 2 * WALL, HD - 2 * WALL, 0.16, 0.04), "HouseWoodFloor", mat['lane'],
+             loc=(HX, HY, floor_z + 0.08))
     for sx in (-1, 1):
         for sy in (-1, 1):
             obj_from(bm_box(0.55, 0.55, HH, 0.06), "Corner", mat['wall2'],
@@ -430,11 +480,43 @@ def build_house():
              ((ad * 0.5 + 0.9), 0.04), (0.0, 2.1), (-(ad * 0.5 + 0.9), 0.04)]
     obj_from(bm_prism(aroof, aw + 1.6, 0.10), "AnnexRoof", mat['roof'],
              loc=(acx, acy, 0.35 + AH + 0.34), rot=(0, 0, math.radians(90)))
-    # front door of the main house
-    obj_from(bm_box(2.4, 0.24, 3.6, 0.07), "DoorFrame", mat['frame'],
-             loc=(HX, HY - HD * 0.5, 0.6 + 1.9))
-    obj_from(bm_box(2.0, 0.24, 3.2, 0.08), "Door", mat['door'],
-             loc=(HX, HY - HD * 0.5 - 0.08, 0.6 + 1.75))
+    # Front door: pivot, named action and custom properties survive FBX export
+    # and become an obvious Unity interactable/animation anchor.
+    # Рама проёма: два косяка и перемычка. Раньше здесь стояла сплошная
+    # плита - она закрывала проём белым щитом, и войти было нельзя.
+    jamb = 0.14
+    obj_from(bm_boxes([
+        ((jamb, WALL + 0.12, door_h + jamb), (-(door_w * 0.5 + jamb * 0.5), 0, 0)),
+        ((jamb, WALL + 0.12, door_h + jamb), ((door_w * 0.5 + jamb * 0.5), 0, 0)),
+        ((door_w + jamb * 2, WALL + 0.12, jamb), (0, 0, (door_h + jamb) * 0.5)),
+    ], 0.02), "DoorFrame", mat['frame'],
+        loc=(HX, front_y, floor_z + door_h * 0.5))
+    hinge = bpy.data.objects.new("HOU_FrontDoor_Hinge", None)
+    bpy.context.collection.objects.link(hinge)
+    hinge.location = (HX - door_w * 0.5, front_y - 0.08, floor_z)
+    hinge["unity_interactable"] = True
+    hinge["interaction"] = "open_close"
+    hinge["animation"] = "Door_Open"
+    door = obj_from(bm_box(door_w, 0.16, door_h, 0.055), "HOU_FrontDoor", mat['door'],
+                    loc=(HX, front_y - 0.10, floor_z + door_h * 0.5))
+    door.parent = hinge
+    door.matrix_parent_inverse = hinge.matrix_world.inverted()
+    # raised panels and handle, parented with the leaf rather than left behind
+    for z in (1.05, 2.30):
+        panel = obj_from(bm_box(1.62, 0.035, 0.82, 0.025), "DoorPanel", mat['wall2'],
+                         loc=(HX, front_y - 0.195, floor_z + z))
+        panel.parent = hinge; panel.matrix_parent_inverse = hinge.matrix_world.inverted()
+    handle = obj_from(bm_cyl(0.075, 0.075, 0.12, 12, 0.015), "DoorHandle", mat['chrome'],
+                      loc=(HX + 0.68, front_y - 0.23, floor_z + 1.65),
+                      rot=(math.radians(90), 0, 0), smooth=True, angle=60)
+    handle.parent = hinge; handle.matrix_parent_inverse = hinge.matrix_world.inverted()
+    hinge.rotation_euler = (0, 0, 0); hinge.keyframe_insert("rotation_euler", index=2, frame=1)
+    hinge.rotation_euler = (0, 0, math.radians(-105)); hinge.keyframe_insert("rotation_euler", index=2, frame=18)
+    hinge.rotation_euler = (0, 0, 0); hinge.keyframe_insert("rotation_euler", index=2, frame=36)
+    set_interp(hinge, 'BEZIER')
+    if hinge.animation_data and hinge.animation_data.action:
+        hinge.animation_data.action.name = "Door_Open"
+    bpy.context.scene.frame_set(1)
     # windows on the main block
     for wx in (-5.2, 5.2):
         add_window((HX + wx, HY - HD * 0.5, 0.6 + 3.1), 2.2, 2.0, 0.0)
@@ -459,8 +541,19 @@ def build_house():
 
     # ---- porch: mat, potted plants, light, house number ----
     fwall_y = HY - HD * 0.5
+
+    # Ступени к двери. Пол в доме на 0.76 м выше двора, а персонаж
+    # перешагивает заметно меньше - без крыльца в открытую дверь просто
+    # не войти, упираешься в невидимый уступ.
+    porch_w = door_w + 1.0
+    found_edge = HY - (HD + 1.0) * 0.5
+    for top, depth in ((0.20, 1.15), (0.40, 0.78), (0.60, 0.42)):
+        obj_from(bm_box(porch_w, depth, top, 0.03), "PorchStep", mat['stone'],
+                 loc=(HX, found_edge - depth * 0.5 + 0.05, top * 0.5))
+
+    # коврик кладём на площадку фундамента, иначе он утоплен в бетон
     obj_from(bm_box(1.1, 0.55, 0.03, 0.012), "Doormat", mat['maroon'],
-             loc=(HX, fwall_y - 0.55, 0.19))
+             loc=(HX, fwall_y - 0.55, 0.615))
     for sxp in (-1, 1):
         obj_from(bm_cyls([(0.20, 0.15, 0.30, (0, 0, 0), 14)], 0.02), "PlanterPot",
                  mat['wood_l'], loc=(HX + sxp * 2.0, fwall_y - 0.42, 0.34),
@@ -498,6 +591,73 @@ def build_house():
              smooth=True, angle=45)
     obj_from(bm_blobs([(0.20, (0, 0, 0), 1.0)], 0, 1, 0, 2), "BowlSignBall",
              mat['blue'], loc=(sign_cx + 0.65, AY0 - 0.14, 4.20), angle=180)
+    build_house_interior()
+
+def build_house_interior():
+    """Furnished, low-poly interior intended as a usable Unity gameplay space."""
+    def box(name, size, loc, material, bevel=0.04):
+        return obj_from(bm_box(*size, bevel), name, material, loc=loc, smooth=True, angle=45)
+    def anchor(name, loc):
+        ob = bpy.data.objects.new("ANCHOR_" + name, None)
+        bpy.context.collection.objects.link(ob); ob.location = loc
+        ob["unity_anchor"] = True
+        return ob
+
+    # Room dividers keep the home legible but leave wide passages for the player.
+    # Планировка. Передняя перегородка шла вдоль той же оси, что и входная
+    # дверь, и упиралась ребром прямо в проём - войдя, ты утыкался в стену.
+    # Убрана: перед входом теперь общая зона, гостиная и кухня открыты.
+    # Спальню и санузел в задней половине по-прежнему отделяет перегородка.
+    box("InteriorDivider", (0.16, 3.6, 3.2), (-6.0, 30.0, 2.2), mat['wall2'])
+
+    # Проход из передней половины в заднюю был 0.4 м - персонаж диаметром
+    # 0.76 м в него просто не пролезал. Раздвинуто до двух метров.
+    box("InteriorDivider", (6.8, 0.16, 3.2), (-10.4, 26.0, 2.2), mat['wall2'])
+    box("InteriorDivider", (6.8, 0.16, 3.2), (-1.6, 26.0, 2.2), mat['wall2'])
+
+    # Living room (front-left): couch, rug, coffee table and TV wall.
+    box("LivingRug", (5.1, 3.5, 0.035), (-10.1, 23.0, 0.79), mat['maroon'], 0.015)
+    box("LivingSofa", (3.4, 0.95, 0.72), (-10.2, 21.45, 1.15), mat['blue'])
+    box("LivingSofaBack", (3.4, 0.16, 0.88), (-10.2, 21.93, 1.56), mat['blue'])
+    box("CoffeeTable", (1.55, 0.85, 0.48), (-10.2, 23.35, 1.05), mat['wood_l'])
+    box("TVStand", (2.4, 0.48, 0.65), (-10.2, 25.25, 1.10), mat['wood'])
+    box("TV", (2.05, 0.10, 1.18), (-10.2, 25.00, 1.90), mat['black'], 0.02)
+    anchor("House_LivingSpawn", (-10.2, 23.8, 0.82))
+
+    # Kitchen (front-right): counter run, fridge, cooker, island and light.
+    box("KitchenCounter", (0.72, 4.4, 0.92), (-2.65, 22.9, 1.25), mat['wood_l'])
+    box("KitchenTop", (0.86, 4.55, 0.10), (-2.65, 22.9, 1.75), mat['stone'])
+    box("Fridge", (1.05, 0.88, 2.25), (0.85, 21.55, 1.92), mat['chrome'])
+    box("Cooker", (0.78, 0.75, 0.90), (-2.65, 24.55, 1.24), mat['metal_d'])
+    box("KitchenIsland", (1.45, 1.95, 0.92), (-0.85, 23.2, 1.25), mat['wood_l'])
+    box("KitchenIslandTop", (1.60, 2.10, 0.10), (-0.85, 23.2, 1.75), mat['stone'])
+    anchor("House_KitchenInteract", (-0.85, 24.5, 0.82))
+
+    # Bedroom (back-left): bed, bedside tables, wardrobe and lamp.
+    box("BedroomRug", (4.8, 3.6, 0.035), (-10.0, 29.1, 0.79), mat['cream'], 0.015)
+    box("BedBase", (3.35, 2.15, 0.48), (-10.1, 29.25, 1.08), mat['wood'])
+    box("BedMattress", (3.22, 2.02, 0.38), (-10.1, 29.25, 1.48), mat['white'])
+    box("BedHeadboard", (3.45, 0.18, 1.38), (-10.1, 30.25, 1.72), mat['wood'])
+    for x in (-12.25, -7.95): box("BedsideTable", (0.52, 0.52, 0.62), (x, 30.0, 1.18), mat['wood_l'])
+    box("Wardrobe", (1.25, 0.65, 2.45), (-13.05, 27.6, 2.02), mat['wood'])
+    anchor("House_BedroomSpawn", (-8.2, 28.0, 0.82))
+
+    # Bathroom / utility (back-right) with clear interaction anchors.
+    box("BathTub", (1.45, 2.35, 0.72), (-1.15, 29.65, 1.18), mat['white'])
+    box("BathWater", (1.20, 2.08, 0.05), (-1.15, 29.65, 1.56), mat['water'], 0.01)
+    box("BathroomVanity", (1.10, 0.55, 0.88), (-3.65, 27.45, 1.23), mat['wood_l'])
+    box("BathroomMirror", (0.78, 0.08, 1.10), (-3.65, 27.16, 2.25), mat['glass'], 0.01)
+    box("Washer", (0.78, 0.78, 0.92), (0.85, 27.45, 1.25), mat['chrome'])
+    anchor("House_BathroomInteract", (-2.2, 28.1, 0.82))
+
+    # Warm practical ceiling lamps make the room feel occupied in Blender and Unity.
+    for i, loc in enumerate([(-10.0, 23.2, 5.35), (-2.0, 23.2, 5.35),
+                             (-10.0, 29.2, 5.35), (-2.0, 29.2, 5.35)]):
+        box("HouseCeilingLamp", (0.46, 0.46, 0.12), loc, mat['bulb'], 0.04)
+        ld = bpy.data.lights.new("HouseLight_%d" % i, type='POINT')
+        ld.energy = 240.0; ld.color = (1.0, 0.78, 0.52); ld.shadow_soft_size = 0.65
+        lo = bpy.data.objects.new("HouseLight_%d" % i, ld)
+        bpy.context.collection.objects.link(lo); lo.location = (loc[0], loc[1], loc[2] - 0.18)
 
 def add_window(loc, w=2.0, h=1.8, rz=0.0):
     fr = [((w + 0.4, 0.34, 0.28), (0, 0, h * 0.5 + 0.14)),
@@ -2452,4 +2612,16 @@ if "sheets" in ARGS:
     contact_sheet("anim_bowl_punish", [
         ('bowl', 878), ('bowl', 906), ('bowl', 930), ('bowl2', 950),
         ('punish', 992), ('punish', 1014), ('punish', 1048), ('punish', 1064)])
+
+if "interior" in ARGS:
+    # One deterministic review frame for the house; useful while iterating on
+    # the playable interior without having to navigate the full yard timeline.
+    review_cam, _ = make_cam("CAM_house_review", (-5.1, 24.65, 2.75),
+                             (-10.15, 22.90, 1.45), 28)
+    sc.frame_set(18)
+    sc.camera = review_cam
+    sc.render.resolution_x, sc.render.resolution_y = 1280, 720
+    sc.render.filepath = OUT + "/house_interior_review.png"
+    bpy.ops.render.render(write_still=True)
+    print("### INTERIOR REVIEW")
 print("### DONE")
