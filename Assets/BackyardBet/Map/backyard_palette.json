@@ -281,7 +281,7 @@
    ],
    "rough": 0.1,
    "metal": 0.0,
-   "alpha": 1.0,
+   "alpha": 0.3,
    "emit": 0.0,
    "emit_color": [
     1.0,
@@ -536,6 +536,23 @@
    ],
    "rough": 0.42,
    "metal": 0.7,
+   "alpha": 1.0,
+   "emit": 0.0,
+   "emit_color": [
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  {
+   "name": "Mirror",
+   "color": [
+    0.82,
+    0.86,
+    0.9
+   ],
+   "rough": 0.05,
+   "metal": 1.0,
    "alpha": 1.0,
    "emit": 0.0,
    "emit_color": [

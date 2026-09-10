@@ -34,7 +34,12 @@ namespace BackyardBet
         // HOU_FrontDoor - дверь дома из генератора: у неё есть родитель-петля
         // и своя разметка. Старое имя Door оставлено на случай, если карту
         // пересоберут прежней версией скрипта.
-        static readonly string[] Doors = { "Door", "GateLeaf", "HOU_FrontDoor" };
+        static readonly string[] Doors =
+        {
+            "Door", "GateLeaf",
+            "HOU_FrontDoor",      // входная дверь дома
+            "ANX_BowlingDoor",    // дверь пристройки под вывеской боулинга
+        };
         static readonly string[] Mannequins = { "CH_Bo", "CH_Mia", "CH_Rex", "CH_Sam" };
 
         bool _built;

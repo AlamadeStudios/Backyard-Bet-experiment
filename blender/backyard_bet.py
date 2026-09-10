@@ -285,7 +285,11 @@ def build_mats():
     mat['wall2'] = M("Wall2", (0.80, 0.40, 0.18), 0.75)
     mat['roof'] = M_patchy("Roof", (0.55, 0.12, 0.10), (0.66, 0.20, 0.14), 9.0, 0.72)
     mat['frame'] = M("Frame", (0.98, 0.97, 0.92), 0.60)
-    mat['glass'] = M("Glass", (0.55, 0.78, 0.90), 0.10, spec=1.0)
+    # Стекло было полностью непрозрачным - окна выглядели закрашенными
+    # панелями. Прозрачность переносится в Unity через палитру (alpha < 1
+    # включает там прозрачный режим материала).
+    mat['glass'] = M("Glass", (0.55, 0.78, 0.90), 0.10, spec=1.0, alpha=0.30)
+    mat['mirror'] = M("Mirror", (0.82, 0.86, 0.90), 0.05, metallic=1.0, spec=1.0)
     mat['door'] = M("Door", (0.13, 0.42, 0.66), 0.55)
     mat['stone'] = M_patchy("Stone", (0.58, 0.56, 0.52), (0.68, 0.66, 0.62), 7.0, 0.88)
     mat['concrete'] = M("Concrete", (0.62, 0.60, 0.57), 0.92)
@@ -469,9 +473,48 @@ def build_house():
     aw, ad = AX1 - AX0, AY1 - AY0
     obj_from(bm_box(aw, ad, 0.5, 0.06), "AnnexFloor", mat['concrete'],
              loc=(acx, acy, 0.1))
-    for sy in (-1, 1):
-        obj_from(bm_box(aw, WALL, AH, 0.05), "AnnexWallY", mat["garage"],
-                 loc=(acx, acy + sy * (ad * 0.5 - WALL * 0.5), 0.35 + AH * 0.5))
+    afloor_z = 0.35
+    front_ay = acy - (ad * 0.5 - WALL * 0.5)
+    back_ay = acy + (ad * 0.5 - WALL * 0.5)
+    obj_from(bm_box(aw, WALL, AH, 0.05), "AnnexWallY", mat["garage"],
+             loc=(acx, back_ay, afloor_z + AH * 0.5))
+
+    # Фасад пристройки с настоящими проёмами. Под вывеской боулинга должна
+    # быть дверь, а окна - сквозными: раньше стена была сплошной, внутрь не
+    # попасть и не заглянуть.
+    adoor_cx, adoor_w, adoor_h = acx - 4.0, 2.2, 2.9
+    awin_z, awin_w, awin_h = afloor_z + 2.6, 2.4, 1.6
+    wall_with_openings(
+        "AnnexWallY", mat["garage"], AX0, AX1, front_ay,
+        afloor_z, afloor_z + AH, WALL,
+        [(adoor_cx, adoor_w, afloor_z, afloor_z + adoor_h)] +
+        [(wx, awin_w, awin_z - awin_h * 0.5, awin_z + awin_h * 0.5)
+         for wx in (8.0, 15.0, 22.0)])
+
+    # Дверь пристройки по той же схеме, что у дома: петля-пустышка, чтобы в
+    # Unity вращать створку вокруг настоящего пивота, а не угаданного.
+    ajamb = 0.14
+    obj_from(bm_boxes([
+        ((ajamb, WALL + 0.12, adoor_h + ajamb), (-(adoor_w * 0.5 + ajamb * 0.5), 0, 0)),
+        ((ajamb, WALL + 0.12, adoor_h + ajamb), ((adoor_w * 0.5 + ajamb * 0.5), 0, 0)),
+        ((adoor_w + ajamb * 2, WALL + 0.12, ajamb), (0, 0, (adoor_h + ajamb) * 0.5)),
+    ], 0.02), "AnnexDoorFrame", mat['frame'],
+        loc=(adoor_cx, front_ay, afloor_z + adoor_h * 0.5))
+
+    ahinge = bpy.data.objects.new("ANX_BowlingDoor_Hinge", None)
+    bpy.context.collection.objects.link(ahinge)
+    ahinge.location = (adoor_cx - adoor_w * 0.5, front_ay - 0.08, afloor_z)
+    ahinge["unity_interactable"] = True
+    ahinge["interaction"] = "open_close"
+    adoor = obj_from(bm_box(adoor_w, 0.16, adoor_h, 0.055), "ANX_BowlingDoor",
+                     mat['door'], loc=(adoor_cx, front_ay - 0.10,
+                                       afloor_z + adoor_h * 0.5))
+    adoor.parent = ahinge
+    # Обратную матрицу строим из координат петли напрямую. Через
+    # hinge.matrix_world нельзя: у только что созданной пустышки он ещё не
+    # пересчитан и равен единичному, из-за чего смещение применяется дважды
+    # и створка улетает за пределы двора.
+    adoor.matrix_parent_inverse = Matrix.Translation(-ahinge.location)
     obj_from(bm_box(WALL, ad, AH, 0.05), "AnnexWallX", mat["garage"],
              loc=(AX1 - WALL * 0.5, acy, 0.35 + AH * 0.5))
     obj_from(bm_box(aw, ad, 0.35, 0.05), "AnnexCeil", mat["garage"],
@@ -500,16 +543,16 @@ def build_house():
     door = obj_from(bm_box(door_w, 0.16, door_h, 0.055), "HOU_FrontDoor", mat['door'],
                     loc=(HX, front_y - 0.10, floor_z + door_h * 0.5))
     door.parent = hinge
-    door.matrix_parent_inverse = hinge.matrix_world.inverted()
+    door.matrix_parent_inverse = Matrix.Translation(-hinge.location)
     # raised panels and handle, parented with the leaf rather than left behind
     for z in (1.05, 2.30):
         panel = obj_from(bm_box(1.62, 0.035, 0.82, 0.025), "DoorPanel", mat['wall2'],
                          loc=(HX, front_y - 0.195, floor_z + z))
-        panel.parent = hinge; panel.matrix_parent_inverse = hinge.matrix_world.inverted()
+        panel.parent = hinge; panel.matrix_parent_inverse = Matrix.Translation(-hinge.location)
     handle = obj_from(bm_cyl(0.075, 0.075, 0.12, 12, 0.015), "DoorHandle", mat['chrome'],
                       loc=(HX + 0.68, front_y - 0.23, floor_z + 1.65),
                       rot=(math.radians(90), 0, 0), smooth=True, angle=60)
-    handle.parent = hinge; handle.matrix_parent_inverse = hinge.matrix_world.inverted()
+    handle.parent = hinge; handle.matrix_parent_inverse = Matrix.Translation(-hinge.location)
     hinge.rotation_euler = (0, 0, 0); hinge.keyframe_insert("rotation_euler", index=2, frame=1)
     hinge.rotation_euler = (0, 0, math.radians(-105)); hinge.keyframe_insert("rotation_euler", index=2, frame=18)
     hinge.rotation_euler = (0, 0, 0); hinge.keyframe_insert("rotation_euler", index=2, frame=36)
@@ -522,7 +565,8 @@ def build_house():
         add_window((HX + wx, HY - HD * 0.5, 0.6 + 3.1), 2.2, 2.0, 0.0)
     # annex windows (light for the bowling room)
     for wx in (8.0, 15.0, 22.0):
-        add_window((wx, AY0 + WALL * 0.2, 0.35 + 2.6), 2.4, 1.6, 0.0)
+        # по центру стены, ровно в проёме - раньше окно сидело в её толще
+        add_window((wx, front_ay, awin_z), awin_w, awin_h, 0.0)
 
     # ---- gutters along both roofs ----
     for gy in (HY - HD * 0.5 - 1.3, HY + HD * 0.5 + 1.3):
@@ -646,7 +690,8 @@ def build_house_interior():
     box("BathTub", (1.45, 2.35, 0.72), (-1.15, 29.65, 1.18), mat['white'])
     box("BathWater", (1.20, 2.08, 0.05), (-1.15, 29.65, 1.56), mat['water'], 0.01)
     box("BathroomVanity", (1.10, 0.55, 0.88), (-3.65, 27.45, 1.23), mat['wood_l'])
-    box("BathroomMirror", (0.78, 0.08, 1.10), (-3.65, 27.16, 2.25), mat['glass'], 0.01)
+    # зеркало отдельным материалом: прозрачное стекло тут читалось бы дырой
+    box("BathroomMirror", (0.78, 0.08, 1.10), (-3.65, 27.16, 2.25), mat['mirror'], 0.01)
     box("Washer", (0.78, 0.78, 0.92), (0.85, 27.45, 1.25), mat['chrome'])
     anchor("House_BathroomInteract", (-2.2, 28.1, 0.82))
 
