@@ -34,29 +34,37 @@ namespace BackyardBet
         Vector3 _hinge;
         Vector3 _closedPos;
         Quaternion _closedRot;
+        Transform _pivot;
         float _angle;
 
         void Awake() => ComputeHinge();
 
         /// <summary>
-        /// Точка вращения створки.
+        /// Что вращаем и вокруг чего.
         ///
         /// Если в модели есть родитель-петля (в генераторе это пустышка
-        /// *_Hinge), берём её - там пивот выставлен художником и он точнее
-        /// любой догадки. Иначе вычисляем сами: петля у края створки по её
-        /// узкой стороне.
+        /// *_Hinge), двигаем именно её. К петле прицеплены и створка, и вся
+        /// её отделка - филёнки, ручка. Если крутить одну створку, отделка
+        /// остаётся висеть в проёме и загораживает вход.
+        ///
+        /// Пивот петли к тому же выставлен осознанно и точнее вычисленного
+        /// по краю створки - его и берём. Без петли (калитка) считаем сами.
         /// </summary>
         void ComputeHinge()
         {
-            _closedPos = transform.position;
-            _closedRot = transform.rotation;
-
             var parent = transform.parent;
             if (parent != null && parent.name.EndsWith("_Hinge"))
             {
-                _hinge = parent.position;
+                _pivot = parent;
+                _closedPos = parent.position;
+                _closedRot = parent.rotation;
+                _hinge = parent.position;      // вращение вокруг себя
                 return;
             }
+
+            _pivot = transform;
+            _closedPos = transform.position;
+            _closedRot = transform.rotation;
 
             var rend = GetComponentInChildren<Renderer>();
             if (rend == null) { _hinge = _closedPos; return; }
@@ -85,9 +93,13 @@ namespace BackyardBet
 
         void Apply(float angle)
         {
+            if (_pivot == null) return;
             _angle = angle;
+
+            // Одна формула на оба случая: когда вращаем саму петлю, её
+            // положение совпадает с точкой вращения и позиция не меняется.
             var rot = Quaternion.AngleAxis(angle * -hingeSide, Vector3.up);
-            transform.SetPositionAndRotation(
+            _pivot.SetPositionAndRotation(
                 _hinge + rot * (_closedPos - _hinge),
                 rot * _closedRot);
         }
