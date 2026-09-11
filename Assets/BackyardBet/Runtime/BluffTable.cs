@@ -397,6 +397,15 @@ namespace BackyardBet
 
             if (State == BarState.MatchOver) return;
 
+            // Стопка на столе рубашкой вверх: видно, сколько карт заявили,
+            // но не видно, что именно - на этом вся игра и держится.
+            if (State == BarState.Playing && _pileCount.Value > 0)
+            {
+                float px = w * 0.5f - _pileCount.Value * 26f;
+                for (int i = 0; i < _pileCount.Value; i++)
+                    CardArt.DrawBack(new Rect(px + i * 52f, h * 0.42f, 48f, 68f));
+            }
+
             // --- вскрытие: показываем стопку
             if (State == BarState.Revealed)
             {
@@ -414,7 +423,8 @@ namespace BackyardBet
                                     "Вскрытие:");
             float x = w * 0.5f - _revealed.Length * 45f;
             for (int i = 0; i < _revealed.Length; i++)
-                DrawCard(new Rect(x + i * 90f, h * 0.38f, 80f, 112f), (CardRank)_revealed[i], false);
+                DrawCard(new Rect(x + i * 90f, h * 0.38f, 80f, 112f),
+                         (CardRank)_revealed[i], false, i);
         }
 
         /// <summary>Своя рука: карты выбираются щелчком, до трёх за ход.</summary>
@@ -428,7 +438,7 @@ namespace BackyardBet
                     var r = new Rect(x + i * 96f, h - 190f - (_picked.Contains(i) ? 24f : 0f),
                                      86f, 120f);
                     if (GUI.Button(r, GUIContent.none)) TogglePick(i);
-                    DrawCard(r, (CardRank)_myHand[i], _picked.Contains(i));
+                    DrawCard(r, (CardRank)_myHand[i], _picked.Contains(i), i + _round.Value);
                 }
             }
 
@@ -458,23 +468,9 @@ namespace BackyardBet
             _picked.Add(i);
         }
 
-        static void DrawCard(Rect r, CardRank rank, bool picked)
-        {
-            var face = new GUIStyle(GUI.skin.box)
-            {
-                fontSize = 16,
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleCenter,
-                wordWrap = true
-            };
-            face.normal.textColor = rank == CardRank.Joker
-                ? new Color(0.95f, 0.55f, 0.15f)
-                : new Color(0.12f, 0.12f, 0.14f);
-
-            var old = GUI.color;
-            GUI.color = picked ? new Color(1f, 0.92f, 0.6f) : Color.white;
-            GUI.Box(r, LiarsBarGame.RankName(rank), face);
-            GUI.color = old;
-        }
+        // seed - позиция карты: от неё зависит только масть, на правила она
+        // не влияет, но рука перестаёт выглядеть пятью одинаковыми картами
+        static void DrawCard(Rect r, CardRank rank, bool picked, int seed) =>
+            CardArt.DrawFace(r, rank, picked, seed);
     }
 }

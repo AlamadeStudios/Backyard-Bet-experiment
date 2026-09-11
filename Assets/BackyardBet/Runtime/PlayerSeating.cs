@@ -76,10 +76,53 @@ namespace BackyardBet
 
             FocusOnTable(table);
 
+            ClearTable(table, true);
+
             Seated = true;
             if (_move != null) _move.enabled = false;   // ходьба и обзор выключены
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+        }
+
+        readonly System.Collections.Generic.List<Renderer> _hidden =
+            new System.Collections.Generic.List<Renderer>();
+
+        /// <summary>
+        /// Убрать со стола весь хлам: бутылки, фишки, стакан, кости.
+        ///
+        /// Сев играть, игрок должен видеть чистое сукно - бутылки поперёк
+        /// карт мешают читать раздачу. Прячем только у себя: это чистая
+        /// картинка, по сети её гонять незачем, а предметы остаются на своих
+        /// местах и никуда не деваются.
+        /// </summary>
+        void ClearTable(GameObject table, bool clear)
+        {
+            if (!clear)
+            {
+                foreach (var r in _hidden) if (r != null) r.enabled = true;
+                _hidden.Clear();
+                return;
+            }
+
+            if (table == null) return;
+            var rend = table.GetComponent<Renderer>();
+            if (rend == null) return;
+
+            Bounds b = rend.bounds;
+            float radius = Mathf.Max(b.extents.x, b.extents.z) * 1.15f;
+            float topY = b.max.y;
+
+            foreach (var r in FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            {
+                if (r == rend) continue;
+                Vector3 p = r.bounds.center;
+                if (p.y < topY || p.y > topY + 1.2f) continue;      // не на столе
+                if (new Vector2(p.x - b.center.x, p.z - b.center.z).magnitude > radius) continue;
+                if (r.transform.IsChildOf(transform)) continue;     // своё тело не прячем
+
+                r.enabled = false;
+                _hidden.Add(r);
+            }
         }
 
         /// <summary>
@@ -123,6 +166,7 @@ namespace BackyardBet
         {
             if (!Seated) return;
             Seated = false;
+            ClearTable(null, false);           // вернуть реквизит на стол
 
             if (_move != null)
             {
