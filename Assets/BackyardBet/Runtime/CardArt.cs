@@ -66,6 +66,13 @@ namespace BackyardBet
             }
         }
 
+        /// <summary>Текстура лица - для карт в мире.</summary>
+        public static Texture2D FaceTexture(CardRank rank, int seed) =>
+            Load(FaceName(rank, seed));
+
+        /// <summary>Текстура рубашки - для стопки на столе.</summary>
+        public static Texture2D BackTexture() => Load("Back");
+
         /// <summary>Лицевая сторона. seed задаёт масть - она ни на что не влияет.</summary>
         public static void DrawFace(Rect r, CardRank rank, bool highlighted, int seed = 0)
         {

@@ -65,6 +65,7 @@ namespace BackyardBet
 
         LiarsBarGame _game;                       // только на хосте
         DiceCupShaker _cup;
+        CardTable3D _cards;
         bool _pendingNextRound;
 
         int[] _myHand = Array.Empty<int>();       // своя рука, приходит адресно
@@ -80,11 +81,19 @@ namespace BackyardBet
             Instance = this;
 
             _cup = FindAnyObjectByType<DiceCupShaker>();
-            _round.OnValueChanged += (_, __) => { _picked.Clear(); if (_cup != null) _cup.PlayShake(); };
+            _cards = gameObject.AddComponent<CardTable3D>();
+
+            _round.OnValueChanged += (_, __) =>
+            {
+                _picked.Clear();
+                _cards.ClearPile();                    // новый раунд - сукно чистое
+                if (_cup != null) _cup.PlayShake();
+            };
             _state.OnValueChanged += (_, s) =>
             {
                 if (_cup != null && (BarState)s == BarState.Revealed) _cup.PlayReveal();
             };
+            _pileCount.OnValueChanged += (_, n) => _cards.ShowPile(n, LocalEye());
 
             if (IsServer)
             {
@@ -354,7 +363,49 @@ namespace BackyardBet
         }
 
         [ClientRpc]
-        void RevealClientRpc(int[] pile) => _revealed = pile;
+        void RevealClientRpc(int[] pile)
+        {
+            _revealed = pile;
+            if (_cards != null) _cards.RevealPile(pile);
+        }
+
+        /// <summary>Камера местного игрока - от неё летят карты и к ней цепляется рука.</summary>
+        Transform LocalEye()
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm == null || nm.LocalClient == null) return null;
+            var obj = nm.LocalClient.PlayerObject;
+            if (obj == null) return null;
+
+            var seat = obj.GetComponent<PlayerSeating>();
+            if (seat == null || !seat.Seated) return null;      // не за столом - рук не видно
+
+            var cam = obj.GetComponentInChildren<Camera>(true);
+            return cam != null ? cam.transform : null;
+        }
+
+        /// <summary>
+        /// Веер в руках и выбор карт щелчком.
+        ///
+        /// Держим в Update, а не в OnGUI: карты живут в мире, их положение
+        /// должно обновляться вместе с камерой, а не при отрисовке интерфейса.
+        /// </summary>
+        void LateUpdate()
+        {
+            if (_cards == null) return;
+
+            var eye = LocalEye();
+            if (eye == null) { _cards.ClearHand(); return; }
+
+            _cards.ShowHand(_myHand, eye, _picked, _round.Value);
+
+            if (!Input.GetMouseButtonDown(0)) return;
+            var cam = eye.GetComponent<Camera>();
+            if (cam == null) return;
+
+            int hit = _cards.PickUnder(cam.ScreenPointToRay(Input.mousePosition));
+            if (hit >= 0) TogglePick(hit);
+        }
 
         // ------------------------------------------------------------ интерфейс
 
@@ -397,50 +448,26 @@ namespace BackyardBet
 
             if (State == BarState.MatchOver) return;
 
-            // Стопка на столе рубашкой вверх: видно, сколько карт заявили,
-            // но не видно, что именно - на этом вся игра и держится.
-            if (State == BarState.Playing && _pileCount.Value > 0)
-            {
-                float px = w * 0.5f - _pileCount.Value * 26f;
-                for (int i = 0; i < _pileCount.Value; i++)
-                    CardArt.DrawBack(new Rect(px + i * 52f, h * 0.42f, 48f, 68f));
-            }
-
-            // --- вскрытие: показываем стопку
+            // Стопка и вскрытие показываются картами на сукне, а не в
+            // интерфейсе - см. CardTable3D.
             if (State == BarState.Revealed)
             {
-                DrawPile(w, h);
+                PlayerInteraction.Label(new Rect(w * 0.5f - 420f, h * 0.30f, 840f, 30f),
+                                        "Вскрытие — смотри на стол");
                 return;
             }
 
             DrawHand(w, h, me);
         }
 
-        /// <summary>Вскрытая стопка - что там было на самом деле.</summary>
-        void DrawPile(float w, float h)
-        {
-            PlayerInteraction.Label(new Rect(w * 0.5f - 420f, h * 0.32f, 840f, 30f),
-                                    "Вскрытие:");
-            float x = w * 0.5f - _revealed.Length * 45f;
-            for (int i = 0; i < _revealed.Length; i++)
-                DrawCard(new Rect(x + i * 90f, h * 0.38f, 80f, 112f),
-                         (CardRank)_revealed[i], false, i);
-        }
-
         /// <summary>Своя рука: карты выбираются щелчком, до трёх за ход.</summary>
         void DrawHand(float w, float h, ulong me)
         {
-            if (_myHand.Length > 0)
-            {
-                float x = w * 0.5f - _myHand.Length * 48f;
-                for (int i = 0; i < _myHand.Length; i++)
-                {
-                    var r = new Rect(x + i * 96f, h - 190f - (_picked.Contains(i) ? 24f : 0f),
-                                     86f, 120f);
-                    if (GUI.Button(r, GUIContent.none)) TogglePick(i);
-                    DrawCard(r, (CardRank)_myHand[i], _picked.Contains(i), i + _round.Value);
-                }
-            }
+            // Сами карты живут в мире - их держат в руках, а не рисуют внизу
+            // экрана. Здесь остаются только кнопки хода и подсказка.
+            PlayerInteraction.Label(new Rect(w * 0.5f - 300f, h - 96f, 600f, 24f),
+                                    "Щелчок по карте — выбрать, до " +
+                                    LiarsBarGame.MaxPlay + " за ход");
 
             int mySeat = -1;
             for (int i = 0; i < _seats.Count; i++) if (_seats[i].clientId == me) mySeat = i;
@@ -468,9 +495,5 @@ namespace BackyardBet
             _picked.Add(i);
         }
 
-        // seed - позиция карты: от неё зависит только масть, на правила она
-        // не влияет, но рука перестаёт выглядеть пятью одинаковыми картами
-        static void DrawCard(Rect r, CardRank rank, bool picked, int seed) =>
-            CardArt.DrawFace(r, rank, picked, seed);
     }
 }
