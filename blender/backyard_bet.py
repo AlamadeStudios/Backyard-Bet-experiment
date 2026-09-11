@@ -1558,6 +1558,21 @@ def build_fortune_wheel():
                     [mat['metal_d'], mat['maroon'], mat['yellow'], mat['green']],
                     loc=(wx, wy, WHEEL_HUB_Z), smooth=False)
 
+    # Ориентиры для Unity: пустышки в середине нулевого и первого секторов.
+    # По ним игра сама измеряет, где какой сектор и в какую сторону они идут,
+    # вместо того чтобы выводить это формулой через пересчёт осей при
+    # экспорте - на таком выводе легко ошибиться знаком, и тогда колесо
+    # встаёт на одном секторе, а засчитывается другой.
+    for k in (0, 1):
+        am = TAU * k / n + TAU / (2 * n)
+        mark = bpy.data.objects.new("WheelSector%d" % k, None)
+        bpy.context.collection.objects.link(mark)
+        mark.empty_display_size = 0.12
+        mark.location = (wx + math.cos(am) * WHEEL_R * 0.75, wy,
+                         WHEEL_HUB_Z - math.sin(am) * WHEEL_R * 0.75)
+        mark.parent = disc
+        mark.matrix_parent_inverse = Matrix.Translation(-disc.location)
+
     # Подписи - отдельными объектами на обеих сторонах диска. Прицеплены к
     # нему, поэтому крутятся вместе с колесом.
     for i, payout in enumerate(WHEEL_PAYOUTS):

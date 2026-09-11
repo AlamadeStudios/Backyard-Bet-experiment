@@ -47,6 +47,9 @@ namespace BackyardBet
         Transform _disc;
         Quaternion _baseRot = Quaternion.identity;
         Vector3 _spinAxis = Vector3.forward;
+        Vector3 _sector0Dir;        // куда смотрит нулевой сектор, в осях диска
+        float _sectorStep;          // шаг между секторами со знаком
+        bool _layoutKnown;
         float _restAngle;
         float _fromAngle;
         float _toAngle;
@@ -66,6 +69,7 @@ namespace BackyardBet
                 // крутится вкривь - поэтому вращение domножаем к исходному.
                 _baseRot = _disc.localRotation;
                 _spinAxis = FindSpinAxis(go);
+                ReadSectorLayout();
             }
             else Debug.LogWarning("[Backyard Bet] Диск колеса не найден в карте.");
 
@@ -94,6 +98,32 @@ namespace BackyardBet
             return Vector3.forward;
         }
 
+        /// <summary>
+        /// Читаем раскладку секторов по меткам из модели: WheelSector0 и
+        /// WheelSector1 стоят в серединах первых двух секторов.
+        ///
+        /// Выводить это формулой нельзя: между Blender и Unity переставляются
+        /// оси, и знак поворота легко перепутать. Ровно на этом колесо
+        /// останавливалось на одном секторе, а засчитывался другой. Две метки
+        /// дают и направление нулевого сектора, и сторону их обхода.
+        /// </summary>
+        void ReadSectorLayout()
+        {
+            var m0 = _disc.Find("WheelSector0");
+            var m1 = _disc.Find("WheelSector1");
+            if (m0 == null || m1 == null)
+            {
+                Debug.LogWarning("[Backyard Bet] В колесе нет меток секторов - " +
+                                 "результат может не совпасть с тем, что под стрелкой.");
+                return;
+            }
+
+            _sector0Dir = Vector3.ProjectOnPlane(m0.localPosition, _spinAxis).normalized;
+            var d1 = Vector3.ProjectOnPlane(m1.localPosition, _spinAxis).normalized;
+            _sectorStep = Vector3.SignedAngle(_sector0Dir, d1, _spinAxis);
+            _layoutKnown = _sector0Dir.sqrMagnitude > 0.01f;
+        }
+
         /// <summary>Крутится прямо сейчас либо ещё не остыло.</summary>
         public bool Spinning =>
             _spinStart.Value >= 0 &&
@@ -119,9 +149,23 @@ namespace BackyardBet
         {
             if (_sector.Value < 0 || _disc == null) return;
 
-            int n = Payouts.Length;
-            float step = 360f / n;
-            float target = -(_sector.Value * step + step * 0.5f);   // середина сектора под стрелку
+            float target = 0f;
+            if (_layoutKnown)
+            {
+                // куда смотрит выпавший сектор в осях диска
+                Vector3 dir = Quaternion.AngleAxis(_sectorStep * _sector.Value, _spinAxis)
+                              * _sector0Dir;
+
+                // стрелка вверху: переводим мировое "вверх" в оси диска,
+                // чтобы сравнивать в одной системе
+                Vector3 upLocal = _disc.parent != null
+                    ? _disc.parent.InverseTransformDirection(Vector3.up)
+                    : Vector3.up;
+                Vector3 pointer = Vector3.ProjectOnPlane(
+                    Quaternion.Inverse(_baseRot) * upLocal, _spinAxis).normalized;
+
+                target = Vector3.SignedAngle(dir, pointer, _spinAxis);
+            }
 
             _fromAngle = _restAngle;
             _toAngle = _fromAngle + fullTurns * 360f + Mathf.DeltaAngle(_fromAngle, target);
