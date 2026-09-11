@@ -15,6 +15,7 @@ GameObject:
   - component: {fileID: 5626856375973926421}
   - component: {fileID: 5365236170903219432}
   - component: {fileID: 6680533923435557294}
+  - component: {fileID: 462523987567779765}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -187,6 +188,20 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BackyardBet.PlayerAvatar
   ShowTopMostFoldoutHeaderGroup: 1
+--- !u!114 &462523987567779765
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 755507525084858034}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a8a2b8e3dda089e4b85862ee3acb09cc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BackyardBet.PlayerSeating
+  ShowTopMostFoldoutHeaderGroup: 1
+  seatedEyeHeight: 1.62
 --- !u!1 &4281301080082723599
 GameObject:
   m_ObjectHideFlags: 0

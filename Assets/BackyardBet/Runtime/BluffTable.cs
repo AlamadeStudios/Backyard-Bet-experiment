@@ -48,6 +48,12 @@ namespace BackyardBet
         [Tooltip("Очки победителю партии.")]
         public int winScore = 10;
 
+        [Tooltip("Сколько мест за столом - недостающие займут боты.")]
+        public int tableSize = 4;
+
+        [Tooltip("Сколько бот думает перед ходом, с.")]
+        public float botThinkTime = 1.6f;
+
         readonly NetworkList<SeatInfo> _seats = new NetworkList<SeatInfo>();
         readonly NetworkVariable<int> _state = new NetworkVariable<int>((int)BarState.Idle);
         readonly NetworkVariable<int> _currentSeat = new NetworkVariable<int>(-1);
@@ -110,6 +116,9 @@ namespace BackyardBet
             if (!IsServer || _game == null) return;
             if (_game.IndexOf(clientId) >= 0) return;
 
+            // живой игрок занимает место бота, а не добавляется сверх стола
+            if (_game.players.Count >= tableSize) _game.RemoveOneBot();
+
             _game.AddPlayer(clientId, "Игрок " + clientId);
             int seat = _game.IndexOf(clientId);
 
@@ -124,6 +133,12 @@ namespace BackyardBet
             }
 
             _message.Value = "Игрок " + clientId + " сел за стол";
+
+            // Добираем ботов до полного стола, чтобы раздача начиналась сразу.
+            // Иначе в одиночку за столом ничего не происходит и проверить
+            // карточную часть можно только запустив второе окно.
+            while (_game.players.Count < tableSize) _game.AddBot(BotName(_game.players.Count));
+
             if (State == BarState.Idle && _game.CanStart)
             {
                 _game.StartMatch();
@@ -132,6 +147,60 @@ namespace BackyardBet
             }
             PushPublicState();
             SendHands();
+        }
+
+        static string BotName(int i)
+        {
+            string[] names = { "Гоша", "Хвост", "Рыжий", "Батя" };
+            return names[i % names.Length];
+        }
+
+        // ------------------------------------------------------------ ходы ботов
+
+        float _botClock;
+
+        void Update()
+        {
+            if (!IsServer || _game == null) return;
+            if (_game.state != BarState.Playing) { _botClock = 0f; return; }
+
+            int i = _game.currentIndex;
+            if (i < 0 || i >= _game.players.Count || !_game.players[i].isBot)
+            {
+                _botClock = 0f;
+                return;
+            }
+
+            // пауза перед ходом: мгновенные ходы ботов читаются как сбой,
+            // игрок просто не успевает понять, что произошло
+            _botClock += Time.deltaTime;
+            if (_botClock < botThinkTime) return;
+            _botClock = 0f;
+
+            PlayBotTurn(i);
+        }
+
+        void PlayBotTurn(int index)
+        {
+            var bot = _game.players[index];
+            var play = _game.BotDecide(index, out bool challenge);
+
+            if (challenge)
+            {
+                if (_game.Challenge(bot.clientId)) AfterChallenge();
+                return;
+            }
+
+            if (play == null || play.Count == 0) return;
+            if (!_game.Play(bot.clientId, play)) return;
+
+            _message.Value = bot.name + ": " + play.Count + " x " +
+                             LiarsBarGame.RankName(_game.tableRank);
+            PushPublicState();
+            SendHands();
+
+            if (_game.EveryoneOutOfCards() && !_pendingNextRound)
+                StartCoroutine(RedealAfterPause());
         }
 
         /// <summary>Игрок встал или отключился.</summary>
@@ -169,7 +238,15 @@ namespace BackyardBet
         {
             ulong who = p.Receive.SenderClientId;
             if (_game == null || !_game.Challenge(who)) return;
+            AfterChallenge();
+        }
 
+        /// <summary>
+        /// Разбор вскрытия - общий для игрока и бота. Вызов у них приходит
+        /// разными путями, а последствия обязаны быть одинаковыми.
+        /// </summary>
+        void AfterChallenge()
+        {
             var loser = _game.players[_game.loserIndex];
             _message.Value = string.Format(
                 "ЛЖЁШЬ! Вскрытие: {0}. Штраф получает {1} ({2}/{3})",
@@ -252,7 +329,9 @@ namespace BackyardBet
         {
             foreach (var p in _game.players)
             {
-                if (p.eliminated) continue;
+                // ботам слать некуда: их идентификаторы выдуманные, и адресный
+                // RPC на несуществующего клиента - это ошибка в консоли
+                if (p.eliminated || p.isBot) continue;
                 HandClientRpc(ToInts(p.hand), new ClientRpcParams
                 {
                     Send = new ClientRpcSendParams { TargetClientIds = new[] { p.clientId } }

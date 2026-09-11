@@ -1459,6 +1459,57 @@ WHEEL_R = 1.25
 # покрасить. Расходиться они не должны.
 WHEEL_PAYOUTS = (0, 2, 0, 3, 0, 2, 0, 2)
 
+# В пиксельном шрифте есть только цифры - для меток "0x/2x/3x" нужна буква.
+WHEEL_FONT = dict(DIGIT_FONT)
+WHEEL_FONT['x'] = ["101", "101", "010", "101", "101"]
+
+
+def _wheel_pixel(bm, cx, cy, turn, w, h, z, mi):
+    """
+    Пиксель метки - тонкая коробка, а не плоский квад.
+
+    Квад виден только с одной стороны, и на диске, который сам построен
+    плашмя и потом ставится вертикально, легко промахнуться стороной -
+    метка окажется за диском и пропадёт. Коробка замкнута и видна всегда.
+    """
+    before = len(bm.faces)
+    mt = (Matrix.Translation((cx, cy, z)) @ Matrix.Rotation(turn, 4, 'Z')
+          @ Matrix.Diagonal((w, h, 0.03, 1.0)))
+    bmesh.ops.create_cube(bm, size=1.0, matrix=mt)
+    bm.faces.ensure_lookup_table()
+    for i in range(before, len(bm.faces)):
+        bm.faces[i].material_index = mi
+
+
+def _wheel_label(bm, text, angle, radius, px=0.052, gap=0.020, mi=4):
+    """
+    Метка сектора. Кладётся в ту же сетку, что и сам диск, до его поворота -
+    поэтому крутится вместе с колесом, а не висит в воздухе отдельно.
+    Развёрнута наружу от центра, чтобы читалась по радиусу.
+    """
+    total_w = len(text) * (3 * px + gap) - gap
+    turn = angle + math.pi * 0.5
+    ca, sa = math.cos(turn), math.sin(turn)
+    cx, cy = math.cos(angle) * radius, math.sin(angle) * radius
+
+    for ci, ch in enumerate(text):
+        pat = WHEEL_FONT.get(ch, ["000"] * 5)
+        for row in range(5):
+            for col in range(3):
+                if pat[row][col] != '1':
+                    continue
+                # знак минус: диск строится плашмя и ставится вертикально,
+                # к игроку разворачивается обратная сторона - без зеркала
+                # подписи читались бы задом наперёд
+                lx = -(-total_w * 0.5 + ci * (3 * px + gap) + col * px + px * 0.5)
+                ly = (2 - row) * px
+                # z отрицательный: после того как диск встанет вертикально,
+                # к игроку повернётся именно эта сторона
+                _wheel_pixel(bm,
+                             cx + lx * ca - ly * sa,
+                             cy + lx * sa + ly * ca,
+                             turn, px * 0.88, px * 0.88, -0.02, mi)
+
 
 def build_fortune_wheel():
     """Колесо фортуны во дворе: подходи и крути на свой страх."""
@@ -1482,11 +1533,14 @@ def build_fortune_wheel():
         a0 = TAU * i / n
         add_annulus(bm, WHEEL_R * 0.17, WHEEL_R, a0, a0 + TAU / n, 0.0, 6,
                     colour[payout])
+        # подпись по центру сектора: сколько он множит
+        _wheel_label(bm, "%dx" % payout, a0 + TAU / (2 * n), WHEEL_R * 0.62)
     # Поворот именно на -90: при +90 нормали плоских секторов смотрят от
     # игрока, диск пропадает из виду и остаётся один обод.
     bm_rotate(bm, math.radians(-90), 'X')
     obj_from(bm, "FortuneWheel",
-             [mat['metal_d'], mat['maroon'], mat['yellow'], mat['green']],
+             [mat['metal_d'], mat['maroon'], mat['yellow'], mat['green'],
+              mat['cream']],          # слот 4 - подписи секторов
              loc=(wx, wy, WHEEL_HUB_Z), smooth=False)
 
     # обод и колышки между секторами - по ним щёлкает стрелка

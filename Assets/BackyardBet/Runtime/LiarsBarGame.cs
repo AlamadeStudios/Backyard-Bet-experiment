@@ -31,6 +31,7 @@ namespace BackyardBet
         {
             public ulong clientId;
             public string name;
+            public bool isBot;
             public bool eliminated;
             public int penalties;
             public readonly List<CardRank> hand = new List<CardRank>();
@@ -72,6 +73,68 @@ namespace BackyardBet
         {
             if (IndexOf(clientId) >= 0) return;
             players.Add(new Player { clientId = clientId, name = name });
+        }
+
+        /// <summary>
+        /// Посадить бота. Нужен, чтобы игра шла и с одним живым игроком:
+        /// иначе проверить карточную часть можно только запустив второе окно.
+        /// Идентификаторы берём заведомо большие - с настоящими клиентами
+        /// они не столкнутся.
+        /// </summary>
+        public void AddBot(string name)
+        {
+            ulong id = 1000UL + (ulong)players.Count;
+            players.Add(new Player { clientId = id, name = name, isBot = true });
+        }
+
+        public int BotCount => players.FindAll(p => p.isBot).Count;
+
+        /// <summary>Убрать одного бота - его место занимает пришедший игрок.</summary>
+        public bool RemoveOneBot()
+        {
+            int i = players.FindIndex(p => p.isBot);
+            if (i < 0) return false;
+            players.RemoveAt(i);
+            if (currentIndex >= players.Count) currentIndex = 0;
+            return true;
+        }
+
+        /// <summary>
+        /// Решение бота: врать, говорить правду или ловить на лжи.
+        /// Возвращает позиции карт для хода; пустой список - значит вызов.
+        /// </summary>
+        public List<int> BotDecide(int index, out bool challenge)
+        {
+            var p = players[index];
+            challenge = false;
+
+            var honest = new List<int>();
+            for (int i = 0; i < p.hand.Count; i++)
+                if (p.hand[i] == tableRank || p.hand[i] == CardRank.Joker) honest.Add(i);
+
+            // Чем больше карт заявили разом, тем вероятнее блеф - на этом и
+            // ловим. Совсем без карт в руке ловить приходится всегда.
+            if (HasPlayToChallenge)
+            {
+                double suspicion = 0.12 + 0.22 * (lastPlayed.Count - 1);
+                if (p.hand.Count == 0) suspicion = 1.0;
+                if (_rng.NextDouble() < suspicion) { challenge = true; return null; }
+            }
+
+            if (p.hand.Count == 0) { challenge = true; return null; }
+
+            var play = new List<int>();
+            if (honest.Count > 0)
+            {
+                // иногда придерживаем честные карты, чтобы не читались насквозь
+                int take = Math.Min(honest.Count, _rng.Next(1, MaxPlay + 1));
+                for (int i = 0; i < take; i++) play.Add(honest[i]);
+                return play;
+            }
+
+            // честных нет - блефуем одной случайной
+            play.Add(_rng.Next(p.hand.Count));
+            return play;
         }
 
         public void RemovePlayer(ulong clientId)

@@ -19,12 +19,16 @@ namespace BackyardBet
         [Tooltip("Высота глаз сидящего, м.")]
         public float seatedEyeHeight = 1.62f;
 
+        [Tooltip("Обзор за столом, градусов. Уже обычного - двор уходит из кадра.")]
+        public float seatedFov = 38f;
+
         public bool Seated { get; private set; }
 
         NetworkPlayerMovement _move;
         Vector3 _standEye;
         Vector3 _standPos;
         Quaternion _standRot;
+        float _standFov = 60f;
 
         void Awake() => _move = GetComponent<NetworkPlayerMovement>();
 
@@ -70,19 +74,48 @@ namespace BackyardBet
                                            : seat.rotation);
             if (cc != null) cc.enabled = true;
 
-            if (_move != null && _move.cameraPivot != null)
-            {
-                _standEye = _move.cameraPivot.localPosition;
-                var eye = _standEye;
-                eye.y = seatedEyeHeight;              // сидя глаза ниже
-                _move.cameraPivot.localPosition = eye;
-                _move.cameraPivot.localRotation = Quaternion.identity;
-            }
+            FocusOnTable(table);
 
             Seated = true;
             if (_move != null) _move.enabled = false;   // ходьба и обзор выключены
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+        }
+
+        /// <summary>
+        /// Взять стол крупно: опустить глаза на высоту сидящего, наклонить
+        /// взгляд на столешницу и сузить обзор.
+        ///
+        /// Без этого сидящий смотрит прямо перед собой и видит весь двор,
+        /// а стол занимает нижнюю четверть экрана - играть в карты так
+        /// невозможно. Сужение обзора убирает из кадра двор без всяких
+        /// затемнений и шторок.
+        /// </summary>
+        void FocusOnTable(GameObject table)
+        {
+            if (_move == null || _move.cameraPivot == null) return;
+
+            _standEye = _move.cameraPivot.localPosition;
+            var eye = _standEye;
+            eye.y = seatedEyeHeight;
+            _move.cameraPivot.localPosition = eye;
+
+            float pitch = 0f;
+            if (table != null)
+            {
+                Vector3 eyeWorld = _move.cameraPivot.position;
+                Vector3 toTable = table.transform.position - eyeWorld;
+                float flat = new Vector2(toTable.x, toTable.z).magnitude;
+                if (flat > 0.01f) pitch = Mathf.Atan2(-toTable.y, flat) * Mathf.Rad2Deg;
+            }
+            _move.cameraPivot.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+
+            var cam = _move.cameraPivot.GetComponentInChildren<Camera>(true);
+            if (cam != null)
+            {
+                _standFov = cam.fieldOfView;
+                cam.fieldOfView = seatedFov;
+            }
         }
 
         /// <summary>Встать из-за стола и вернуться к обычному управлению.</summary>
@@ -93,7 +126,14 @@ namespace BackyardBet
 
             if (_move != null)
             {
-                if (_move.cameraPivot != null) _move.cameraPivot.localPosition = _standEye;
+                if (_move.cameraPivot != null)
+                {
+                    _move.cameraPivot.localPosition = _standEye;
+                    _move.cameraPivot.localRotation = Quaternion.identity;
+
+                    var cam = _move.cameraPivot.GetComponentInChildren<Camera>(true);
+                    if (cam != null) cam.fieldOfView = _standFov;
+                }
                 _move.enabled = true;
             }
 
