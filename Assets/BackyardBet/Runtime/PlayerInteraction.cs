@@ -29,11 +29,13 @@ namespace BackyardBet
 
         IInteractable _target;
         string _prompt;
+        PlayerSeating _seating;
         readonly RaycastHit[] _hits = new RaycastHit[12];
 
         public override void OnNetworkSpawn()
         {
             if (!IsOwner) { enabled = false; return; }
+            _seating = GetComponent<PlayerSeating>();
             if (aim == null)
             {
                 var cam = GetComponentInChildren<Camera>(true);
@@ -44,6 +46,15 @@ namespace BackyardBet
         void Update()
         {
             if (!IsOwner) return;
+
+            // За столом игрок занят картами: курсор свободен, прицел не
+            // нужен, а нажатия не должны улетать в мир мимо интерфейса.
+            if (_seating != null && _seating.Seated)
+            {
+                _target = null;
+                _prompt = null;
+                return;
+            }
 
             ScanForTarget();
 
@@ -178,6 +189,7 @@ namespace BackyardBet
         void OnGUI()
         {
             if (!IsOwner) return;
+            if (_seating != null && _seating.Seated) return;   // за столом рисует стол
 
             float cx = Screen.width * 0.5f, cy = Screen.height * 0.5f;
             GUI.color = new Color(1f, 1f, 1f, 0.5f);

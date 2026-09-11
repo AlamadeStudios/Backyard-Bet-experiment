@@ -7,76 +7,82 @@ using Unity.Netcode;
 
 namespace BackyardBet
 {
-    /// <summary>Публичная строка игрока за столом: сколько костей осталось.</summary>
+    /// <summary>Публичная строка игрока за столом: карт на руках и штрафов.</summary>
     public struct SeatInfo : INetworkSerializable, IEquatable<SeatInfo>
     {
         public ulong clientId;
-        public int diceCount;
+        public int cards;
+        public int penalties;
         public bool eliminated;
 
         public void NetworkSerialize<T>(BufferSerializer<T> s) where T : IReaderWriter
         {
             s.SerializeValue(ref clientId);
-            s.SerializeValue(ref diceCount);
+            s.SerializeValue(ref cards);
+            s.SerializeValue(ref penalties);
             s.SerializeValue(ref eliminated);
         }
 
         public bool Equals(SeatInfo o) =>
-            clientId == o.clientId && diceCount == o.diceCount && eliminated == o.eliminated;
+            clientId == o.clientId && cards == o.cards &&
+            penalties == o.penalties && eliminated == o.eliminated;
     }
 
     /// <summary>
-    /// Стол блефа: сетевая обёртка над правилами LiarsDice.
+    /// Стол: сетевая обёртка над правилами LiarsBarGame плюс интерфейс.
     ///
     /// Правила крутятся только на хосте. Наружу уходят две разные вещи:
-    ///  * публичное состояние (чей ход, ставка, у кого сколько костей) -
+    ///  * публичное состояние (чей ход, ранг стола, у кого сколько карт) -
     ///    через NetworkVariable, видно всем;
-    ///  * свои кости - адресным ClientRpc лично игроку.
-    /// Если разослать кости всем, блефовать станет не во что.
+    ///  * **своя рука - адресным RPC лично игроку**.
+    /// Если разослать карты всем, врать станет не во что, а вся игра
+    /// держится именно на вранье.
     /// </summary>
     public class BluffTable : NetworkBehaviour
     {
         public static BluffTable Instance { get; private set; }
 
         [Tooltip("Пауза на показ вскрытия перед новым раундом, с.")]
-        public float revealPause = 4f;
+        public float revealPause = 5f;
+
+        [Tooltip("Очки победителю партии.")]
+        public int winScore = 10;
 
         readonly NetworkList<SeatInfo> _seats = new NetworkList<SeatInfo>();
-        readonly NetworkVariable<int> _state = new NetworkVariable<int>((int)DiceState.Idle);
+        readonly NetworkVariable<int> _state = new NetworkVariable<int>((int)BarState.Idle);
         readonly NetworkVariable<int> _currentSeat = new NetworkVariable<int>(-1);
-        readonly NetworkVariable<int> _bidQuantity = new NetworkVariable<int>(0);
-        readonly NetworkVariable<int> _bidFace = new NetworkVariable<int>(0);
-        readonly NetworkVariable<int> _round = new NetworkVariable<int>(0);
+        readonly NetworkVariable<int> _tableRank = new NetworkVariable<int>();
+        readonly NetworkVariable<int> _round = new NetworkVariable<int>();
+        readonly NetworkVariable<int> _pileCount = new NetworkVariable<int>();
         readonly NetworkVariable<FixedString128Bytes> _message =
             new NetworkVariable<FixedString128Bytes>();
 
-        LiarsDice _game;              // только на хосте
+        LiarsBarGame _game;                       // только на хосте
         DiceCupShaker _cup;
-        int[] _myDice = Array.Empty<int>();
         bool _pendingNextRound;
 
-        // выбор в интерфейсе
-        int _uiQuantity = 1;
-        int _uiFace = 1;
+        int[] _myHand = Array.Empty<int>();       // своя рука, приходит адресно
+        readonly List<int> _picked = new List<int>();
+        int[] _revealed = Array.Empty<int>();
 
-        DiceState State => (DiceState)_state.Value;
+        BarState State => (BarState)_state.Value;
+
+        // ------------------------------------------------------------ жизнь
 
         public override void OnNetworkSpawn()
         {
             Instance = this;
 
-            // стакан на столе оживает у каждого локально: по сети едет только
-            // номер раунда и состояние партии, анимацию каждый играет сам
             _cup = FindAnyObjectByType<DiceCupShaker>();
-            _round.OnValueChanged += (_, __) => { if (_cup != null) _cup.PlayShake(); };
+            _round.OnValueChanged += (_, __) => { _picked.Clear(); if (_cup != null) _cup.PlayShake(); };
             _state.OnValueChanged += (_, s) =>
             {
-                if (_cup != null && (DiceState)s == DiceState.Revealed) _cup.PlayReveal();
+                if (_cup != null && (BarState)s == BarState.Revealed) _cup.PlayReveal();
             };
 
             if (IsServer)
             {
-                _game = new LiarsDice();
+                _game = new LiarsBarGame();
                 NetworkManager.OnClientDisconnectCallback += OnClientLeft;
             }
         }
@@ -87,14 +93,7 @@ namespace BackyardBet
             if (Instance == this) Instance = null;
         }
 
-        void OnClientLeft(ulong clientId)
-        {
-            if (!IsServer || _game == null) return;
-            _game.RemovePlayer(clientId);
-            PushPublicState();
-        }
-
-        // ------------------------------------------------------------ вход за стол
+        void OnClientLeft(ulong clientId) => ServerLeave(clientId);
 
         public bool IsSeated(ulong clientId)
         {
@@ -103,35 +102,64 @@ namespace BackyardBet
             return false;
         }
 
+        // ------------------------------------------------------------ вход и выход
+
         /// <summary>Игрок сел за стол. Только на хосте.</summary>
         public void ServerJoin(ulong clientId)
         {
-            if (!IsServer) return;
+            if (!IsServer || _game == null) return;
             if (_game.IndexOf(clientId) >= 0) return;
 
             _game.AddPlayer(clientId, "Игрок " + clientId);
-            _message.Value = "Игрок " + clientId + " сел за стол";
+            int seat = _game.IndexOf(clientId);
 
-            // партия стартует, как только за столом двое
-            if (State == DiceState.Idle && _game.CanStart)
+            // усаживаем игрока на стул: дальше он видит стол, а не двор
+            if (NetworkManager.ConnectedClients.TryGetValue(clientId, out var c) &&
+                c.PlayerObject != null)
+            {
+                var seating = c.PlayerObject.GetComponent<PlayerSeating>();
+                if (seating != null) seating.ServerSeat(seat);
+            }
+
+            _message.Value = "Игрок " + clientId + " сел за стол";
+            if (State == BarState.Idle && _game.CanStart)
             {
                 _game.StartMatch();
-                _message.Value = "Партия началась! Кости брошены.";
+                _message.Value = "Партия началась. Ранг стола: " +
+                                 LiarsBarGame.RankName(_game.tableRank);
             }
             PushPublicState();
-            SendPrivateDice();
+            SendHands();
+        }
+
+        /// <summary>Игрок встал или отключился.</summary>
+        public void ServerLeave(ulong clientId)
+        {
+            if (!IsServer || _game == null) return;
+            if (_game.IndexOf(clientId) < 0) return;
+
+            _game.RemovePlayer(clientId);
+            if (_game.players.Count < 2) _game.state = BarState.Idle;
+            PushPublicState();
         }
 
         // ------------------------------------------------------------ ходы
 
         [ServerRpc(RequireOwnership = false)]
-        public void PlaceBidServerRpc(int quantity, int face, ServerRpcParams p = default)
+        public void PlayCardsServerRpc(int[] handIndices, ServerRpcParams p = default)
         {
             ulong who = p.Receive.SenderClientId;
-            if (_game == null || !_game.PlaceBid(who, quantity, face)) return;
+            if (_game == null) return;
+            if (!_game.Play(who, new List<int>(handIndices))) return;
 
-            _message.Value = "Игрок " + who + ": " + quantity + " x " + face;
+            _message.Value = "Игрок " + who + ": " + handIndices.Length + " x " +
+                             LiarsBarGame.RankName(_game.tableRank);
             PushPublicState();
+            SendHands();
+
+            // никто не может ходить - раздаём заново, иначе раунд повиснет
+            if (_game.EveryoneOutOfCards() && !_pendingNextRound)
+                StartCoroutine(RedealAfterPause());
         }
 
         [ServerRpc(RequireOwnership = false)]
@@ -140,46 +168,64 @@ namespace BackyardBet
             ulong who = p.Receive.SenderClientId;
             if (_game == null || !_game.Challenge(who)) return;
 
-            var loser = _game.players[_game.lastLoserIndex];
+            var loser = _game.players[_game.loserIndex];
             _message.Value = string.Format(
-                "ВРЁШЬ! Грани {0} выпало {1} при ставке {2}. {3} теряет кость.",
-                _game.bidFace, _game.lastActual, _game.bidQuantity, loser.name);
+                "ЛЖЁШЬ! Вскрытие: {0}. Штраф получает {1} ({2}/{3})",
+                _game.lastClaimWasTrue ? "заявка честная" : "блеф раскрыт",
+                loser.name, loser.penalties, _game.penaltyLimit);
 
             PushPublicState();
-            RevealAllDiceClientRpc(PackAllDice());
+            RevealClientRpc(ToInts(_game.lastPlayed));
 
-            if (State == DiceState.MatchOver)
+            if (State == BarState.MatchOver)
             {
                 int w = _game.WinnerIndex;
-                _message.Value = w >= 0
-                    ? "ТУРНИР ОКОНЧЕН. Победил " + _game.players[w].name
-                    : "ТУРНИР ОКОНЧЕН.";
-                if (MatchScore.Instance != null && w >= 0)
-                    MatchScore.Instance.Add(_game.players[w].clientId, 10, "Победа за столом! +10");
+                if (w >= 0)
+                {
+                    _message.Value = "ПАРТИЯ ОКОНЧЕНА. Победил " + _game.players[w].name;
+                    if (MatchScore.Instance != null)
+                        MatchScore.Instance.Add(_game.players[w].clientId, winScore,
+                                                "Победа за столом!  +" + winScore);
+                }
             }
-            else if (!_pendingNextRound)
-            {
-                StartCoroutine(NextRoundAfterPause());
-            }
+            else if (!_pendingNextRound) StartCoroutine(NextRoundAfterPause());
         }
 
         IEnumerator NextRoundAfterPause()
         {
             _pendingNextRound = true;
             yield return new WaitForSeconds(revealPause);
-            if (_game != null && (DiceState)_state.Value == DiceState.Revealed)
+            if (_game != null && (BarState)_state.Value == BarState.Revealed)
             {
                 _game.NextRound();
-                _message.Value = "Раунд " + _game.roundNumber + ". Кости брошены.";
-                PushPublicState();
-                SendPrivateDice();
+                AnnounceRound();
             }
             _pendingNextRound = false;
         }
 
+        IEnumerator RedealAfterPause()
+        {
+            _pendingNextRound = true;
+            yield return new WaitForSeconds(2f);
+            if (_game != null && _game.state == BarState.Playing)
+            {
+                _game.StartRound(_game.currentIndex);
+                AnnounceRound();
+            }
+            _pendingNextRound = false;
+        }
+
+        void AnnounceRound()
+        {
+            _message.Value = "Раунд " + _game.roundNumber + ". Ранг стола: " +
+                             LiarsBarGame.RankName(_game.tableRank);
+            PushPublicState();
+            SendHands();
+        }
+
         // ------------------------------------------------------------ синхронизация
 
-        /// <summary>Разослать публичное состояние: без чужих костей.</summary>
+        /// <summary>Публичное состояние: без чужих карт.</summary>
         void PushPublicState()
         {
             _seats.Clear();
@@ -187,53 +233,47 @@ namespace BackyardBet
                 _seats.Add(new SeatInfo
                 {
                     clientId = p.clientId,
-                    diceCount = p.diceCount,
+                    cards = p.hand.Count,
+                    penalties = p.penalties,
                     eliminated = p.eliminated
                 });
 
             _state.Value = (int)_game.state;
-            _currentSeat.Value = _game.state == DiceState.Bidding ? _game.currentIndex : -1;
-            _bidQuantity.Value = _game.bidQuantity;
-            _bidFace.Value = _game.bidFace;
+            _currentSeat.Value = _game.state == BarState.Playing ? _game.currentIndex : -1;
+            _tableRank.Value = (int)_game.tableRank;
             _round.Value = _game.roundNumber;
+            _pileCount.Value = _game.lastPlayed.Count;
         }
 
-        /// <summary>Каждому - только его кости, персональным адресом.</summary>
-        void SendPrivateDice()
+        /// <summary>Каждому - только его карты, персональным адресом.</summary>
+        void SendHands()
         {
             foreach (var p in _game.players)
             {
                 if (p.eliminated) continue;
-                var target = new ClientRpcParams
+                HandClientRpc(ToInts(p.hand), new ClientRpcParams
                 {
                     Send = new ClientRpcSendParams { TargetClientIds = new[] { p.clientId } }
-                };
-                MyDiceClientRpc(p.dice.ToArray(), target);
+                });
             }
         }
 
-        [ClientRpc]
-        void MyDiceClientRpc(int[] dice, ClientRpcParams p = default) => _myDice = dice;
-
-        int[] PackAllDice()
+        static int[] ToInts(List<CardRank> cards)
         {
-            // формат: clientId уложить не можем компактно, шлём парами
-            // (номер места, грань) - для показа вскрытия этого достаточно
-            var list = new List<int>();
-            for (int i = 0; i < _game.players.Count; i++)
-                foreach (int d in _game.players[i].dice) { list.Add(i); list.Add(d); }
-            return list.ToArray();
+            var a = new int[cards.Count];
+            for (int i = 0; i < cards.Count; i++) a[i] = (int)cards[i];
+            return a;
         }
 
-        readonly List<(int seat, int face)> _revealed = new List<(int, int)>();
+        [ClientRpc]
+        void HandClientRpc(int[] hand, ClientRpcParams p = default)
+        {
+            _myHand = hand;
+            _picked.Clear();
+        }
 
         [ClientRpc]
-        void RevealAllDiceClientRpc(int[] packed)
-        {
-            _revealed.Clear();
-            for (int i = 0; i + 1 < packed.Length; i += 2)
-                _revealed.Add((packed[i], packed[i + 1]));
-        }
+        void RevealClientRpc(int[] pile) => _revealed = pile;
 
         // ------------------------------------------------------------ интерфейс
 
@@ -243,91 +283,117 @@ namespace BackyardBet
             if (nm == null || !nm.IsClient) return;
 
             ulong me = nm.LocalClientId;
-            if (!IsSeated(me)) return;              // не за столом - интерфейс не нужен
+            if (!IsSeated(me)) return;             // не за столом - интерфейс не нужен
 
             float w = Screen.width, h = Screen.height;
+            var box = new GUIStyle(GUI.skin.box) { fontSize = 14, alignment = TextAnchor.UpperLeft };
 
-            // --- шапка: раунд и ставка
-            string bid = _bidQuantity.Value > 0
-                ? string.Format("ставка: {0} x грань {1}", _bidQuantity.Value, _bidFace.Value)
-                : "ставки нет";
-            PlayerInteraction.Label(new Rect(w * 0.5f - 400f, 14f, 800f, 34f),
-                                    "Раунд " + _round.Value + "   ·   " + bid);
+            // --- шапка
+            PlayerInteraction.Label(new Rect(w * 0.5f - 420f, 14f, 840f, 34f),
+                "Раунд " + _round.Value + "   ·   Ранг стола: " +
+                LiarsBarGame.RankName((CardRank)_tableRank.Value) +
+                (_pileCount.Value > 0 ? "   ·   в стопке: " + _pileCount.Value : ""));
 
             string msg = _message.Value.ToString();
             if (!string.IsNullOrEmpty(msg))
-                PlayerInteraction.Label(new Rect(w * 0.5f - 450f, 48f, 900f, 30f), msg);
+                PlayerInteraction.Label(new Rect(w * 0.5f - 460f, 48f, 920f, 30f), msg);
 
-            // --- список мест
-            var box = new GUIStyle(GUI.skin.box) { fontSize = 14, alignment = TextAnchor.UpperLeft };
-            GUILayout.BeginArea(new Rect(20f, 120f, 220f, 40f + _seats.Count * 20f),
+            // --- места
+            GUILayout.BeginArea(new Rect(20f, 110f, 250f, 46f + _seats.Count * 20f),
                                 GUIContent.none, box);
             GUILayout.Label("За столом:");
             for (int i = 0; i < _seats.Count; i++)
             {
                 var s = _seats[i];
-                string tag = s.eliminated ? "выбыл" : new string('•', Mathf.Max(0, s.diceCount));
-                string turn = i == _currentSeat.Value ? "  <— ход" : "";
                 string who = s.clientId == me ? "Ты" : "Игрок " + s.clientId;
-                GUILayout.Label(who + ": " + tag + turn);
+                string tag = s.eliminated ? "выбыл"
+                                          : s.cards + " карт · штраф " + s.penalties;
+                GUILayout.Label(who + ": " + tag + (i == _currentSeat.Value ? "  <— ход" : ""));
             }
             GUILayout.EndArea();
 
-            // --- свои кости
-            if (_myDice.Length > 0 && State != DiceState.MatchOver)
-            {
-                float dx = w * 0.5f - _myDice.Length * 33f;
-                var dieStyle = new GUIStyle(GUI.skin.box)
-                {
-                    fontSize = 28,
-                    fontStyle = FontStyle.Bold,
-                    alignment = TextAnchor.MiddleCenter
-                };
-                for (int i = 0; i < _myDice.Length; i++)
-                    GUI.Box(new Rect(dx + i * 66f, h - 108f, 56f, 56f),
-                            _myDice[i].ToString(), dieStyle);
-            }
+            PlayerInteraction.Label(new Rect(20f, h - 40f, 420f, 24f), "Esc — встать из-за стола");
 
-            if (State == DiceState.MatchOver) return;
+            if (State == BarState.MatchOver) return;
 
-            // --- вскрытие: показываем всё, ходов пока нет
-            if (State == DiceState.Revealed)
+            // --- вскрытие: показываем стопку
+            if (State == BarState.Revealed)
             {
-                PlayerInteraction.Label(new Rect(w * 0.5f - 400f, h * 0.34f, 800f, 34f),
-                                        "Вскрытие — следующий раунд вот-вот");
+                DrawPile(w, h);
                 return;
             }
 
-            // --- твой ход
+            DrawHand(w, h, me);
+        }
+
+        /// <summary>Вскрытая стопка - что там было на самом деле.</summary>
+        void DrawPile(float w, float h)
+        {
+            PlayerInteraction.Label(new Rect(w * 0.5f - 420f, h * 0.32f, 840f, 30f),
+                                    "Вскрытие:");
+            float x = w * 0.5f - _revealed.Length * 45f;
+            for (int i = 0; i < _revealed.Length; i++)
+                DrawCard(new Rect(x + i * 90f, h * 0.38f, 80f, 112f), (CardRank)_revealed[i], false);
+        }
+
+        /// <summary>Своя рука: карты выбираются щелчком, до трёх за ход.</summary>
+        void DrawHand(float w, float h, ulong me)
+        {
+            if (_myHand.Length > 0)
+            {
+                float x = w * 0.5f - _myHand.Length * 48f;
+                for (int i = 0; i < _myHand.Length; i++)
+                {
+                    var r = new Rect(x + i * 96f, h - 190f - (_picked.Contains(i) ? 24f : 0f),
+                                     86f, 120f);
+                    if (GUI.Button(r, GUIContent.none)) TogglePick(i);
+                    DrawCard(r, (CardRank)_myHand[i], _picked.Contains(i));
+                }
+            }
+
             int mySeat = -1;
             for (int i = 0; i < _seats.Count; i++) if (_seats[i].clientId == me) mySeat = i;
             if (mySeat != _currentSeat.Value) return;
 
-            GUILayout.BeginArea(new Rect(w * 0.5f - 250f, h - 190f, 500f, 74f),
-                                GUIContent.none, box);
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Костей:", GUILayout.Width(58));
-            if (GUILayout.Button("−", GUILayout.Width(30))) _uiQuantity = Mathf.Max(1, _uiQuantity - 1);
-            GUILayout.Label(_uiQuantity.ToString(), GUILayout.Width(26));
-            if (GUILayout.Button("+", GUILayout.Width(30))) _uiQuantity++;
-
-            GUILayout.Space(14);
-            GUILayout.Label("Грань:", GUILayout.Width(50));
-            if (GUILayout.Button("−", GUILayout.Width(30))) _uiFace = Mathf.Max(1, _uiFace - 1);
-            GUILayout.Label(_uiFace.ToString(), GUILayout.Width(26));
-            if (GUILayout.Button("+", GUILayout.Width(30)))
-                _uiFace = Mathf.Min(LiarsDice.Faces, _uiFace + 1);
-            GUILayout.EndHorizontal();
-
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Поставить", GUILayout.Height(24)))
-                PlaceBidServerRpc(_uiQuantity, _uiFace);
-            GUI.enabled = _bidQuantity.Value > 0;
-            if (GUILayout.Button("ВРЁШЬ!", GUILayout.Height(24)))
+            // --- кнопки хода
+            float bx = w * 0.5f - 190f;
+            GUI.enabled = _picked.Count > 0 && _picked.Count <= LiarsBarGame.MaxPlay;
+            if (GUI.Button(new Rect(bx, h - 56f, 180f, 34f),
+                           "Выложить " + _picked.Count))
+            {
+                PlayCardsServerRpc(_picked.ToArray());
+                _picked.Clear();
+            }
+            GUI.enabled = _pileCount.Value > 0;
+            if (GUI.Button(new Rect(bx + 200f, h - 56f, 180f, 34f), "ЛЖЁШЬ!"))
                 ChallengeServerRpc();
             GUI.enabled = true;
-            GUILayout.EndHorizontal();
-            GUILayout.EndArea();
+        }
+
+        void TogglePick(int i)
+        {
+            if (_picked.Contains(i)) { _picked.Remove(i); return; }
+            if (_picked.Count >= LiarsBarGame.MaxPlay) return;
+            _picked.Add(i);
+        }
+
+        static void DrawCard(Rect r, CardRank rank, bool picked)
+        {
+            var face = new GUIStyle(GUI.skin.box)
+            {
+                fontSize = 16,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                wordWrap = true
+            };
+            face.normal.textColor = rank == CardRank.Joker
+                ? new Color(0.95f, 0.55f, 0.15f)
+                : new Color(0.12f, 0.12f, 0.14f);
+
+            var old = GUI.color;
+            GUI.color = picked ? new Color(1f, 0.92f, 0.6f) : Color.white;
+            GUI.Box(r, LiarsBarGame.RankName(rank), face);
+            GUI.color = old;
         }
     }
 }

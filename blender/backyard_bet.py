@@ -1445,8 +1445,8 @@ def off_flight_path(x, y, clear=21.0):
     return not any(math.hypot(x - cx, y - cy) < clear for cx, cy in EST_PATH)
 
 # ============================================================ колесо фортуны
-# Открытое место к юго-востоку от стола: (9, 10) упиралось в бар.
-WHEEL = (7.0, -5.0)
+# Открытое место: (9, 10) упиралось в бар, (7, -5) - в указатели на (6, -6).
+WHEEL = (-2.0, -6.0)
 WHEEL_HUB_Z = 2.30
 WHEEL_R = 1.25
 
@@ -1482,7 +1482,9 @@ def build_fortune_wheel():
         a0 = TAU * i / n
         add_annulus(bm, WHEEL_R * 0.17, WHEEL_R, a0, a0 + TAU / n, 0.0, 6,
                     colour[payout])
-    bm_rotate(bm, math.radians(90), 'X')
+    # Поворот именно на -90: при +90 нормали плоских секторов смотрят от
+    # игрока, диск пропадает из виду и остаётся один обод.
+    bm_rotate(bm, math.radians(-90), 'X')
     obj_from(bm, "FortuneWheel",
              [mat['metal_d'], mat['maroon'], mat['yellow'], mat['green']],
              loc=(wx, wy, WHEEL_HUB_Z), smooth=False)

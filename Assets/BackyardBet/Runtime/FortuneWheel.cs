@@ -45,6 +45,7 @@ namespace BackyardBet
         readonly NetworkVariable<ulong> _spinner = new NetworkVariable<ulong>();
 
         Transform _disc;
+        Vector3 _spinAxis = Vector3.forward;
         float _restAngle;
         float _fromAngle;
         float _toAngle;
@@ -56,7 +57,7 @@ namespace BackyardBet
             Instance = this;
 
             var go = GameObject.Find("FortuneWheel");
-            if (go != null) _disc = go.transform;
+            if (go != null) { _disc = go.transform; _spinAxis = FindSpinAxis(go); }
             else Debug.LogWarning("[Backyard Bet] Диск колеса не найден в карте.");
 
             _spinStart.OnValueChanged += (_, __) => BeginAnimation();
@@ -65,6 +66,23 @@ namespace BackyardBet
         public override void OnNetworkDespawn()
         {
             if (Instance == this) Instance = null;
+        }
+
+        /// <summary>
+        /// Ось вращения берём из самой модели: у плоского диска это та
+        /// локальная ось, вдоль которой он тоньше всего. Задавать её
+        /// константой нельзя - при экспорте из Blender оси переставляются,
+        /// и угаданная ось опрокидывает колесо вместо вращения.
+        /// </summary>
+        static Vector3 FindSpinAxis(GameObject disc)
+        {
+            var rend = disc.GetComponentInChildren<Renderer>();
+            if (rend == null) return Vector3.forward;
+
+            Vector3 size = rend.localBounds.size;
+            if (size.x <= size.y && size.x <= size.z) return Vector3.right;
+            if (size.y <= size.x && size.y <= size.z) return Vector3.up;
+            return Vector3.forward;
         }
 
         /// <summary>Крутится прямо сейчас либо ещё не остыло.</summary>
@@ -113,12 +131,14 @@ namespace BackyardBet
             // а не втыкаться в него на полном ходу
             float eased = 1f - Mathf.Pow(1f - t, 3f);
             _restAngle = Mathf.Lerp(_fromAngle, _toAngle, eased);
-            _disc.localRotation = Quaternion.AngleAxis(_restAngle, Vector3.forward);
+            _disc.localRotation = Quaternion.AngleAxis(_restAngle, _spinAxis);
 
             if (t < 1f) return;
 
             _animating = false;
-            _restAngle = _toAngle;
+            // держим угол в пределах оборота: за десяток кручений накопленные
+            // тысячи градусов начали бы терять точность
+            _restAngle = Mathf.Repeat(_toAngle, 360f);
             if (IsServer && !_payoutDone) { _payoutDone = true; ApplyPayout(); }
         }
 

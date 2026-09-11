@@ -68,6 +68,7 @@ public static class GameplaySetup
         inter.handPoint = hand;
 
         go.AddComponent<PlayerAvatar>();
+        go.AddComponent<PlayerSeating>();
 
         Directory.CreateDirectory(Path.GetDirectoryName(PrefabPath));
         var prefab = PrefabUtility.SaveAsPrefabAsset(go, PrefabPath);
