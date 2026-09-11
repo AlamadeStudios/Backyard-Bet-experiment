@@ -45,6 +45,7 @@ namespace BackyardBet
         readonly NetworkVariable<ulong> _spinner = new NetworkVariable<ulong>();
 
         Transform _disc;
+        Quaternion _baseRot = Quaternion.identity;
         Vector3 _spinAxis = Vector3.forward;
         float _restAngle;
         float _fromAngle;
@@ -57,7 +58,15 @@ namespace BackyardBet
             Instance = this;
 
             var go = GameObject.Find("FortuneWheel");
-            if (go != null) { _disc = go.transform; _spinAxis = FindSpinAxis(go); }
+            if (go != null)
+            {
+                _disc = go.transform;
+                // Импортёр FBX запекает в объект собственный поворот. Если
+                // перезаписать localRotation целиком, диск ложится плашмя и
+                // крутится вкривь - поэтому вращение domножаем к исходному.
+                _baseRot = _disc.localRotation;
+                _spinAxis = FindSpinAxis(go);
+            }
             else Debug.LogWarning("[Backyard Bet] Диск колеса не найден в карте.");
 
             _spinStart.OnValueChanged += (_, __) => BeginAnimation();
@@ -131,7 +140,7 @@ namespace BackyardBet
             // а не втыкаться в него на полном ходу
             float eased = 1f - Mathf.Pow(1f - t, 3f);
             _restAngle = Mathf.Lerp(_fromAngle, _toAngle, eased);
-            _disc.localRotation = Quaternion.AngleAxis(_restAngle, _spinAxis);
+            _disc.localRotation = _baseRot * Quaternion.AngleAxis(_restAngle, _spinAxis);
 
             if (t < 1f) return;
 

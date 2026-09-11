@@ -25,6 +25,7 @@ public static class AutoSetup
     {
         // отложенно: во время перезагрузки домена AssetDatabase трогать нельзя
         EditorApplication.delayCall += EnsureGameRootPrefab;
+        EditorApplication.delayCall += EnsurePlayerPrefab;
         EditorApplication.playModeStateChanged += OnPlayModeChanged;
     }
 
@@ -32,6 +33,29 @@ public static class AutoSetup
     {
         if (state != PlayModeStateChange.ExitingEditMode) return;
         WireScene();
+    }
+
+    /// <summary>
+    /// Пересобрать префаб игрока, если в нём не хватает свежих компонентов.
+    ///
+    /// Раньше это был пункт меню, и его просто не нажимали: код посадки за
+    /// стол был написан, а в префабе его не было - игра молча ничего не
+    /// делала. Проверяем по самому новому компоненту.
+    ///
+    /// Делается при перекомпиляции, а не перед Play: префабу нужно успеть
+    /// пройти импорт, иначе Netcode не присвоит ему идентификатор и игрок
+    /// просто не заспавнится.
+    /// </summary>
+    static void EnsurePlayerPrefab()
+    {
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            "Assets/BackyardBet/Prefabs/Player.prefab");
+        if (prefab != null && prefab.GetComponent<PlayerSeating>() != null) return;
+
+        Debug.Log("[Backyard Bet] В префабе игрока не хватает компонентов - пересобираю.");
+        GameplaySetup.RebuildPlayer();
+        AssetDatabase.ImportAsset("Assets/BackyardBet/Prefabs/Player.prefab",
+                                  ImportAssetOptions.ForceUpdate);
     }
 
     // ------------------------------------------------------------ префаб

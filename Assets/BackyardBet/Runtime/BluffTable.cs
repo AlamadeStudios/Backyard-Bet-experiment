@@ -119,6 +119,8 @@ namespace BackyardBet
             {
                 var seating = c.PlayerObject.GetComponent<PlayerSeating>();
                 if (seating != null) seating.ServerSeat(seat);
+                else Debug.LogError("[Backyard Bet] На префабе игрока нет PlayerSeating - " +
+                                    "усадить за стол нечем. Нужна пересборка префаба.");
             }
 
             _message.Value = "Игрок " + clientId + " сел за стол";
