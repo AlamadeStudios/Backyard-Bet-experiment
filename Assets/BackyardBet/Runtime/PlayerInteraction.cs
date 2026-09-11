@@ -97,6 +97,9 @@ namespace BackyardBet
                 case BluffTableSeat _:
                     JoinTableServerRpc();
                     break;
+                case FortuneWheelHandle _:
+                    SpinWheelServerRpc();
+                    break;
             }
         }
 
@@ -118,6 +121,20 @@ namespace BackyardBet
         {
             if (PropNetwork.Instance == null) return;
             PropNetwork.Instance.ServerPickUp(propIndex, this);
+        }
+
+        [ServerRpc]
+        void SpinWheelServerRpc()
+        {
+            var wheel = FortuneWheel.Instance;
+            if (wheel == null) return;
+
+            // хост перепроверяет, что игрок действительно стоит у колеса
+            var disc = GameObject.Find("FortuneWheel");
+            if (disc != null &&
+                Vector3.Distance(transform.position, disc.transform.position) > 6f) return;
+
+            wheel.ServerSpin(OwnerClientId);
         }
 
         [ServerRpc]

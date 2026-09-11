@@ -1444,6 +1444,66 @@ EST_PATH = [(64, -60), (56, -54), (48, -47), (42, -43), (37, -39), (33, -36),
 def off_flight_path(x, y, clear=21.0):
     return not any(math.hypot(x - cx, y - cy) < clear for cx, cy in EST_PATH)
 
+# ============================================================ колесо фортуны
+# Открытое место к юго-востоку от стола: (9, 10) упиралось в бар.
+WHEEL = (7.0, -5.0)
+WHEEL_HUB_Z = 2.30
+WHEEL_R = 1.25
+
+# Восемь секторов: четыре "0", три "2x", один "3x". Разложены вперемешку,
+# чтобы нули не слипались в одну половину - так колесо и выглядит честнее,
+# и играется напряжённее.
+#
+# ВАЖНО: этот же порядок продублирован в FortuneWheel.cs на стороне Unity.
+# Там он решает, на каком секторе остановиться, здесь - каким цветом его
+# покрасить. Расходиться они не должны.
+WHEEL_PAYOUTS = (0, 2, 0, 3, 0, 2, 0, 2)
+
+
+def build_fortune_wheel():
+    """Колесо фортуны во дворе: подходи и крути на свой страх."""
+    wx, wy = WHEEL
+
+    # Стойка стоит позади диска (игрок подходит со стороны -Y), иначе она
+    # перекрывает секторы и колесо не прочитать.
+    post_y = wy + 0.30
+    obj_from(bm_box(1.30, 1.30, 0.18, 0.04), "WheelBase", mat['stone'],
+             loc=(wx, post_y, 0.09))
+    obj_from(bm_cyl(0.17, 0.21, WHEEL_HUB_Z, 14, 0.03), "WheelPost", mat['wood'],
+             loc=(wx, post_y, WHEEL_HUB_Z * 0.5), smooth=True, angle=45)
+
+    # Диск. Строим плашмя в плоскости XY, потом ставим вертикально: секторы
+    # удобно резать через add_annulus, а он работает именно плашмя.
+    bm = bmesh.new()
+    add_annulus(bm, 0.0, WHEEL_R * 0.17, 0, TAU, 0.0, 24, 0)
+    colour = {0: 1, 2: 2, 3: 3}                      # выплата -> слот материала
+    n = len(WHEEL_PAYOUTS)
+    for i, payout in enumerate(WHEEL_PAYOUTS):
+        a0 = TAU * i / n
+        add_annulus(bm, WHEEL_R * 0.17, WHEEL_R, a0, a0 + TAU / n, 0.0, 6,
+                    colour[payout])
+    bm_rotate(bm, math.radians(90), 'X')
+    obj_from(bm, "FortuneWheel",
+             [mat['metal_d'], mat['maroon'], mat['yellow'], mat['green']],
+             loc=(wx, wy, WHEEL_HUB_Z), smooth=False)
+
+    # обод и колышки между секторами - по ним щёлкает стрелка
+    obj_from(bm_tube(WHEEL_R, WHEEL_R + 0.09, 0.14, 40), "WheelRim", mat['metal'],
+             loc=(wx, wy, WHEEL_HUB_Z), rot=(math.radians(90), 0, 0),
+             smooth=True, angle=50)
+    for i in range(n):
+        a = TAU * i / n
+        obj_from(bm_cyl(0.022, 0.022, 0.16, 8, 0.0), "WheelPeg", mat['chrome'],
+                 loc=(wx + math.cos(a) * (WHEEL_R - 0.05), wy,
+                      WHEEL_HUB_Z + math.sin(a) * (WHEEL_R - 0.05)),
+                 rot=(math.radians(90), 0, 0), smooth=True, angle=50)
+
+    # стрелка сверху
+    obj_from(bm_prism([(-0.10, 0.0), (0.10, 0.0), (0.0, -0.30)], 0.06, 0.015),
+             "WheelPointer", mat['red'],
+             loc=(wx, wy - 0.10, WHEEL_HUB_Z + WHEEL_R + 0.20))
+
+
 def build_decor():
     # string lights over the bluff table
     tx, ty = TBL
@@ -1607,6 +1667,7 @@ build_slingshot()
 build_bowling()
 build_cannon()
 build_piranha_pool()
+build_fortune_wheel()
 build_decor()
 
 # ============================================================ dressing the yard

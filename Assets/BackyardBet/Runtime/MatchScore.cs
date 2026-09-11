@@ -84,6 +84,29 @@ namespace BackyardBet
             if (!string.IsNullOrEmpty(message)) _lastEvent.Value = message;
         }
 
+        /// <summary>
+        /// Умножить счёт игрока. Нужно колесу фортуны: ноль обнуляет всё
+        /// накопленное, 2x и 3x умножают. Только на хосте.
+        /// </summary>
+        public void Multiply(ulong clientId, int factor)
+        {
+            if (!IsServer) return;
+            EnsureRow(clientId);
+            int i = IndexOf(clientId);
+            _scores[i] = new PlayerScore
+            {
+                clientId = clientId,
+                score = _scores[i].score * factor
+            };
+        }
+
+        /// <summary>Показать событие всем, не трогая счёт.</summary>
+        public void Announce(string message)
+        {
+            if (!IsServer || string.IsNullOrEmpty(message)) return;
+            _lastEvent.Value = message;
+        }
+
         // ------------------------------------------------------------ интерфейс
 
         void OnGUI()

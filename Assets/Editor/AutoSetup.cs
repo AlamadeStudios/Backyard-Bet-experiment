@@ -38,8 +38,11 @@ public static class AutoSetup
 
     static void EnsureGameRootPrefab()
     {
+        // проверяем по самому свежему компоненту: если его нет, префаб собран
+        // старой версией скрипта и его надо пересоздать
         var existing = AssetDatabase.LoadAssetAtPath<GameObject>(GameRootPath);
-        if (existing != null && existing.GetComponent<PropNetwork>() != null) return;
+        if (existing != null && existing.GetComponent<FortuneWheel>() != null) return;
+        if (existing != null) AssetDatabase.DeleteAsset(GameRootPath);
 
         var go = new GameObject("GameRoot");
         go.AddComponent<NetworkObject>();
@@ -47,6 +50,7 @@ public static class AutoSetup
         go.AddComponent<WorldState>();
         go.AddComponent<PropNetwork>();
         go.AddComponent<BluffTable>();
+        go.AddComponent<FortuneWheel>();
 
         Directory.CreateDirectory(Path.GetDirectoryName(GameRootPath));
         PrefabUtility.SaveAsPrefabAsset(go, GameRootPath);

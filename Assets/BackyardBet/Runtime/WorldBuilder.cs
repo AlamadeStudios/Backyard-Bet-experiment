@@ -98,6 +98,14 @@ namespace BackyardBet
                     continue;
                 }
 
+                // --- колесо фортуны: сам диск и есть точка взаимодействия
+                if (n == "FortuneWheel")
+                {
+                    if (go.GetComponent<FortuneWheelHandle>() == null)
+                        go.AddComponent<FortuneWheelHandle>();
+                    continue;
+                }
+
                 // --- стакан с костями: трясётся в начале раунда
                 if (Matches(n, "DiceCup"))
                 {
