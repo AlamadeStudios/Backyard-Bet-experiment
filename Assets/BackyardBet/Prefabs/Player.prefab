@@ -202,6 +202,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BackyardBet.PlayerSeating
   ShowTopMostFoldoutHeaderGroup: 1
   seatedEyeHeight: 1.62
+  seatedFov: 38
 --- !u!1 &4281301080082723599
 GameObject:
   m_ObjectHideFlags: 0

@@ -161,8 +161,12 @@ def bm_shift(bm, d):
         v.co.x += d[0]; v.co.y += d[1]; v.co.z += d[2]
     return bm
 
-def add_annulus(bm, r0, r1, a0, a1, z, steps, mi=0):
-    """Flat ring sector. r0 may be 0 for a solid disc."""
+def add_annulus(bm, r0, r1, a0, a1, z, steps, mi=0, flip=False):
+    """Flat ring sector. r0 may be 0 for a solid disc.
+
+    flip разворачивает нормали: нужно, когда кольцо кладётся на обратную
+    сторону детали, иначе оно окажется видно только изнутри.
+    """
     r0 = max(r0, 0.0005)
     vin, vout = [], []
     for i in range(steps + 1):
@@ -171,7 +175,8 @@ def add_annulus(bm, r0, r1, a0, a1, z, steps, mi=0):
         vin.append(bm.verts.new((ca * r0, sa * r0, z)))
         vout.append(bm.verts.new((ca * r1, sa * r1, z)))
     for i in range(steps):
-        f = bm.faces.new((vin[i], vout[i], vout[i + 1], vin[i + 1]))
+        quad = (vin[i], vout[i], vout[i + 1], vin[i + 1])
+        f = bm.faces.new(tuple(reversed(quad)) if flip else quad)
         f.material_index = mi
 
 # ============================================================ animation helpers
@@ -1459,56 +1464,62 @@ WHEEL_R = 1.25
 # покрасить. Расходиться они не должны.
 WHEEL_PAYOUTS = (0, 2, 0, 3, 0, 2, 0, 2)
 
-# В пиксельном шрифте есть только цифры - для меток "0x/2x/3x" нужна буква.
-WHEEL_FONT = dict(DIGIT_FONT)
-WHEEL_FONT['x'] = ["101", "101", "010", "101", "101"]
-
-
-def _wheel_pixel(bm, cx, cy, turn, w, h, z, mi):
+def _text_object(text, size, material):
     """
-    Пиксель метки - тонкая коробка, а не плоский квад.
+    Настоящая надпись шрифтом, а не мозаика из кубиков.
 
-    Квад виден только с одной стороны, и на диске, который сам построен
-    плашмя и потом ставится вертикально, легко промахнуться стороной -
-    метка окажется за диском и пропадёт. Коробка замкнута и видна всегда.
+    Пиксельный шрифт годится для табло боулинга, но на колесе читается
+    грубо: буквы выходят жирными и корявыми. Здесь берём текстовый объект
+    Blender и сразу превращаем его в меш - так он уедет в FBX.
     """
-    before = len(bm.faces)
-    mt = (Matrix.Translation((cx, cy, z)) @ Matrix.Rotation(turn, 4, 'Z')
-          @ Matrix.Diagonal((w, h, 0.03, 1.0)))
-    bmesh.ops.create_cube(bm, size=1.0, matrix=mt)
-    bm.faces.ensure_lookup_table()
-    for i in range(before, len(bm.faces)):
-        bm.faces[i].material_index = mi
+    cu = bpy.data.curves.new(type='FONT', name="WheelText")
+    cu.body = text
+    cu.size = size
+    cu.align_x = 'CENTER'
+    cu.align_y = 'CENTER'
+    cu.extrude = 0.012                     # небольшой объём, чтобы не был плёнкой
+
+    ob = bpy.data.objects.new("WheelLabel", cu)
+    bpy.context.collection.objects.link(ob)
+    ob.data.materials.append(material)
+
+    bpy.context.view_layer.objects.active = ob
+    ob.select_set(True)
+    bpy.ops.object.convert(target='MESH')
+    ob.select_set(False)
+    return ob
 
 
-def _wheel_label(bm, text, angle, radius, px=0.052, gap=0.020, mi=4):
+def _wheel_label(disc, text, angle, radius, face_y, flip, material, size=0.30):
     """
-    Метка сектора. Кладётся в ту же сетку, что и сам диск, до его поворота -
-    поэтому крутится вместе с колесом, а не висит в воздухе отдельно.
-    Развёрнута наружу от центра, чтобы читалась по радиусу.
-    """
-    total_w = len(text) * (3 * px + gap) - gap
-    turn = angle + math.pi * 0.5
-    ca, sa = math.cos(turn), math.sin(turn)
-    cx, cy = math.cos(angle) * radius, math.sin(angle) * radius
+    Подпись сектора. Отдельный объект, прицепленный к диску - поэтому
+    крутится вместе с ним.
 
-    for ci, ch in enumerate(text):
-        pat = WHEEL_FONT.get(ch, ["000"] * 5)
-        for row in range(5):
-            for col in range(3):
-                if pat[row][col] != '1':
-                    continue
-                # знак минус: диск строится плашмя и ставится вертикально,
-                # к игроку разворачивается обратная сторона - без зеркала
-                # подписи читались бы задом наперёд
-                lx = -(-total_w * 0.5 + ci * (3 * px + gap) + col * px + px * 0.5)
-                ly = (2 - row) * px
-                # z отрицательный: после того как диск встанет вертикально,
-                # к игроку повернётся именно эта сторона
-                _wheel_pixel(bm,
-                             cx + lx * ca - ly * sa,
-                             cy + lx * sa + ly * ca,
-                             turn, px * 0.88, px * 0.88, -0.02, mi)
+    Ставится с обеих сторон колеса: диск объёмный, и сзади он тоже виден,
+    а надпись, положенная лишь на одну грань, с другой стороны пропадала бы.
+    """
+    ob = _text_object(text, size, material)
+
+    # Текст рождается плашмя лицом вверх: ставим вертикально и доворачиваем
+    # по сектору. Плюс 90 градусов - чтобы верх буквы смотрел наружу от
+    # центра, а не по касательной: тогда сектор, вставший под стрелку,
+    # читается ровно, как на настоящем призовом колесе.
+    q = (Quaternion((0, 1, 0), angle + math.pi * 0.5) @
+         Quaternion((1, 0, 0), math.radians(90)))
+    if flip:
+        q = q @ Quaternion((0, 1, 0), math.pi)
+
+    ob.rotation_mode = 'QUATERNION'
+    ob.rotation_quaternion = q
+    ob.location = (disc.location.x + math.cos(angle) * radius,
+                   face_y,
+                   disc.location.z - math.sin(angle) * radius)
+
+    ob.parent = disc
+    # обратную матрицу строим из координат диска: matrix_world у только что
+    # созданного объекта ещё не пересчитан, и смещение применилось бы дважды
+    ob.matrix_parent_inverse = Matrix.Translation(-disc.location)
+    return ob
 
 
 def build_fortune_wheel():
@@ -1523,25 +1534,38 @@ def build_fortune_wheel():
     obj_from(bm_cyl(0.17, 0.21, WHEEL_HUB_Z, 14, 0.03), "WheelPost", mat['wood'],
              loc=(wx, post_y, WHEEL_HUB_Z * 0.5), smooth=True, angle=45)
 
-    # Диск. Строим плашмя в плоскости XY, потом ставим вертикально: секторы
-    # удобно резать через add_annulus, а он работает именно плашмя.
-    bm = bmesh.new()
-    add_annulus(bm, 0.0, WHEEL_R * 0.17, 0, TAU, 0.0, 24, 0)
+    # Диск делаем объёмным телом, а не плоским кольцом секторов: плоскость
+    # видна лишь с одной стороны, и сзади колесо просвечивало насквозь.
+    # Строим плашмя в XY и ставим вертикально - секторы удобно резать
+    # через add_annulus, а он работает именно плашмя.
+    thick = 0.12
     colour = {0: 1, 2: 2, 3: 3}                      # выплата -> слот материала
     n = len(WHEEL_PAYOUTS)
-    for i, payout in enumerate(WHEEL_PAYOUTS):
-        a0 = TAU * i / n
-        add_annulus(bm, WHEEL_R * 0.17, WHEEL_R, a0, a0 + TAU / n, 0.0, 6,
-                    colour[payout])
-        # подпись по центру сектора: сколько он множит
-        _wheel_label(bm, "%dx" % payout, a0 + TAU / (2 * n), WHEEL_R * 0.62)
-    # Поворот именно на -90: при +90 нормали плоских секторов смотрят от
-    # игрока, диск пропадает из виду и остаётся один обод.
+
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=48,
+                          radius1=WHEEL_R, radius2=WHEEL_R, depth=thick)
+    # цветные секторы кладём на обе грани, чуть выступая над телом
+    for z, flip in ((thick * 0.5 + 0.004, False), (-thick * 0.5 - 0.004, True)):
+        add_annulus(bm, 0.0, WHEEL_R * 0.17, 0, TAU, z, 24, 0, flip)
+        for i, payout in enumerate(WHEEL_PAYOUTS):
+            a0 = TAU * i / n
+            add_annulus(bm, WHEEL_R * 0.17, WHEEL_R, a0, a0 + TAU / n, z, 6,
+                        colour[payout], flip)
     bm_rotate(bm, math.radians(-90), 'X')
-    obj_from(bm, "FortuneWheel",
-             [mat['metal_d'], mat['maroon'], mat['yellow'], mat['green'],
-              mat['cream']],          # слот 4 - подписи секторов
-             loc=(wx, wy, WHEEL_HUB_Z), smooth=False)
+
+    disc = obj_from(bm, "FortuneWheel",
+                    [mat['metal_d'], mat['maroon'], mat['yellow'], mat['green']],
+                    loc=(wx, wy, WHEEL_HUB_Z), smooth=False)
+
+    # Подписи - отдельными объектами на обеих сторонах диска. Прицеплены к
+    # нему, поэтому крутятся вместе с колесом.
+    for i, payout in enumerate(WHEEL_PAYOUTS):
+        am = TAU * i / n + TAU / (2 * n)
+        for face_y, flip in ((wy - thick * 0.5 - 0.02, False),
+                             (wy + thick * 0.5 + 0.02, True)):
+            _wheel_label(disc, "%dx" % payout, am, WHEEL_R * 0.60,
+                         face_y, flip, mat['cream'])
 
     # обод и колышки между секторами - по ним щёлкает стрелка
     obj_from(bm_tube(WHEEL_R, WHEEL_R + 0.09, 0.14, 40), "WheelRim", mat['metal'],
