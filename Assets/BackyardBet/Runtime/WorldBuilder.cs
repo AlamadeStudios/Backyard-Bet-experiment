@@ -42,6 +42,36 @@ namespace BackyardBet
         };
         static readonly string[] Mannequins = { "CH_Bo", "CH_Mia", "CH_Rex", "CH_Sam" };
 
+        /// <summary>
+        /// Что убрано со двора.
+        ///
+        /// Объекты не удаляются, а выключаются: геометрия остаётся в модели,
+        /// пересобирать карту в Blender не нужно. Чтобы вернуть развлечение,
+        /// достаточно убрать его строки отсюда.
+        ///
+        /// Убран только инвентарь самих забав. Постройки вокруг них -
+        /// пристройка боулинга, навес над бильярдом - остаются: без них у
+        /// дома пропал бы кусок стены, а во дворе появилась бы пустота.
+        /// </summary>
+        static readonly string[] Hidden =
+        {
+            // бир-понг: стол, стаканы, шарики
+            "BPTop", "BPLeg", "Cup", "PongBall",
+
+            // рогатка: сама рогатка, снаряды и стеллаж с банками
+            "SlingFork", "SlingPost", "Band", "Pouch", "Pellet", "CanRack", "Can",
+
+            // бильярд: стол, лузы, шар и кий. Навес остаётся навесом
+            "PoolFelt", "PoolFrame", "PoolLeg", "PoolRails", "Pocket",
+            "CueBall", "CueStick",
+
+            // боулинг: дорожка, жёлоба, кегли и шар. Само помещение остаётся
+            "Lane", "Gutter", "Approach", "Pin", "PinBand", "BallReturn", "BowlBall",
+
+            // лавка перед домом - столешница с двумя лавками
+            "PicnicTable",
+        };
+
         bool _built;
 
         void Awake() => Build();
@@ -58,11 +88,13 @@ namespace BackyardBet
             var map = GameObject.Find("Map");
             if (map == null) { Debug.LogError("[Backyard Bet] Нет объекта Map - мир не собрать."); return; }
 
+            int hidden = HideRemoved(map);
             int doors = 0, props = 0, targets = 0, table = 0;
 
             foreach (var mf in map.GetComponentsInChildren<MeshFilter>(true))
             {
                 var go = mf.gameObject;
+                if (!go.activeInHierarchy) continue;   // убранное не оснащаем
                 string n = go.name;
 
                 // --- двери
@@ -157,7 +189,33 @@ namespace BackyardBet
 
             Debug.Log(string.Format(
                 "[Backyard Bet] Мир собран: двери {0}, предметы {1}, мишени {2}, " +
-                "стол {3}, места {4}, анимаций {5}", doors, props, targets, table, seats, alive));
+                "стол {3}, места {4}, анимаций {5}, убрано {6}",
+                doors, props, targets, table, seats, alive, hidden));
+        }
+
+        /// <summary>
+        /// Выключает то, что перечислено в Hidden.
+        ///
+        /// Именно выключает, а не удаляет: объект остаётся в сцене, и ничего
+        /// не ломается, если на него кто-то ссылается. Идёт первым проходом -
+        /// убранному не нужны ни физика, ни подбор, ни анимация.
+        /// </summary>
+        static int HideRemoved(GameObject map)
+        {
+            int hidden = 0;
+            foreach (var t in map.GetComponentsInChildren<Transform>(true))
+            {
+                if (!t.gameObject.activeSelf) continue;
+
+                foreach (var name in Hidden)
+                {
+                    if (!Matches(t.name, name)) continue;
+                    t.gameObject.SetActive(false);
+                    hidden++;
+                    break;
+                }
+            }
+            return hidden;
         }
 
         /// <summary>
