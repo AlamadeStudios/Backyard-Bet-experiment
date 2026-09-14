@@ -59,6 +59,7 @@ namespace BackyardBet
         readonly NetworkVariable<int> _currentSeat = new NetworkVariable<int>(-1);
         readonly NetworkVariable<int> _tableRank = new NetworkVariable<int>();
         readonly NetworkVariable<int> _round = new NetworkVariable<int>();
+        readonly NetworkVariable<int> _pileSeat = new NetworkVariable<int>(-1);
         readonly NetworkVariable<int> _pileCount = new NetworkVariable<int>();
         readonly NetworkVariable<FixedString128Bytes> _message =
             new NetworkVariable<FixedString128Bytes>();
@@ -93,7 +94,12 @@ namespace BackyardBet
             {
                 if (_cup != null && (BarState)s == BarState.Revealed) _cup.PlayReveal();
             };
-            _pileCount.OnValueChanged += (_, n) => _cards.ShowPile(n, LocalEye());
+            _pileSeat.OnValueChanged  += (_, seat) => _cards.SetPileSeat(seat);
+            _pileCount.OnValueChanged += (_, n) =>
+            {
+                _cards.SetPileSeat(_pileSeat.Value);
+                _cards.ShowPile(n, LocalEye());
+            };
 
             if (IsServer)
             {
@@ -201,7 +207,9 @@ namespace BackyardBet
             }
 
             if (play == null || play.Count == 0) return;
+            int seat = _game.currentIndex;            // до хода: дальше очередь сместится
             if (!_game.Play(bot.clientId, play)) return;
+            _pileSeat.Value = seat;
 
             _message.Value = bot.name + ": " + play.Count + " x " +
                              LiarsBarGame.RankName(_game.tableRank);
@@ -230,7 +238,12 @@ namespace BackyardBet
         {
             ulong who = p.Receive.SenderClientId;
             if (_game == null) return;
+
+            // место запоминаем до хода: внутри Play очередь уже сместится,
+            // а сброс должен лечь перед тем, кто выкладывал
+            int seat = _game.currentIndex;
             if (!_game.Play(who, new List<int>(handIndices))) return;
+            _pileSeat.Value = seat;
 
             _message.Value = "Игрок " + who + ": " + handIndices.Length + " x " +
                              LiarsBarGame.RankName(_game.tableRank);
@@ -399,9 +412,7 @@ namespace BackyardBet
             _cards.ShowHand(_myHand, eye, _picked, _round.Value);
 
             if (!Input.GetMouseButtonDown(0)) return;
-
-            int hit = _cards.PickUnder(eye.ScreenPointToRay(Input.mousePosition));
-            if (hit >= 0) TogglePick(hit);
+            if (_cards.Hovered >= 0) TogglePick(_cards.Hovered);
         }
 
         // ------------------------------------------------------------ интерфейс
