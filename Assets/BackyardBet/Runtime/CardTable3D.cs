@@ -37,10 +37,10 @@ namespace BackyardBet
         public float smoothSpeed = 13f;
 
         [Tooltip("Во сколько раз карта на столе крупнее настоящей.")]
-        public float pileScale = 1.7f;
+        public float pileScale = 2.6f;
 
         [Tooltip("Насколько сброс сдвинут от центра стола к ходившему.")]
-        [Range(0f, 0.85f)] public float pileToSeat = 0.52f;
+        [Range(0f, 0.85f)] public float pileToSeat = 0f;   // 0 - ровно в центре
 
         /// <summary>Карта под курсором. -1, если ни одной.</summary>
         public int Hovered { get; private set; } = -1;
@@ -229,9 +229,11 @@ namespace BackyardBet
             float surface = rend != null ? rend.bounds.max.y + 0.012f : top.position.y;
             center.y = surface;
 
-            // сброс ложится перед тем, кто ходил: в середине круглого стола
-            // диаметром под три метра карту не разглядеть ни с одного места
-            var seat = FindSeat(_pileSeat);
+            // Сброс лежит в центре стола - он общий, и все выложенные карты
+            // должны собираться в одну кучу. Разглядеть карту в середине
+            // стола диаметром под три метра помогает не сдвиг к игроку, а
+            // размер: карты на столе заметно крупнее настоящих.
+            var seat = pileToSeat > 0f ? FindSeat(_pileSeat) : null;
             if (seat != null)
             {
                 center = Vector3.Lerp(center,
@@ -252,7 +254,8 @@ namespace BackyardBet
                 }
             }
 
-            float spread = 0.09f * pileScale;
+            // куча, а не выкладка по столу: карты должны лежать внахлёст
+            float spread = 0.045f * pileScale;
 
             for (int i = 0; i < _pile.Count; i++)
             {
