@@ -24,7 +24,10 @@ namespace BackyardBet
     /// </summary>
     public class LiarsBarGame
     {
-        public const int HandSize = 5;
+        /// <summary>Карт на руках. Больше трёх в руке не держим.</summary>
+        public const int HandSize = 3;
+
+        /// <summary>Сколько карт можно выложить за ход.</summary>
         public const int MaxPlay = 3;
 
         public class Player

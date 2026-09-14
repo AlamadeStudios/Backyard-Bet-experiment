@@ -17,11 +17,14 @@ namespace BackyardBet
     /// </summary>
     public class CardVisual : MonoBehaviour
     {
-        public const float Width = 0.088f;
+        // Соотношение взято с самой колоды (357x537), а не с настоящей
+        // карты: иначе картинку растянет по ширине и лица поедут.
         public const float Height = 0.126f;
+        public const float Width = Height * 357f / 537f;
 
         Renderer _rend;
         Coroutine _move;
+        Transform _frame;
 
         /// <summary>Индекс карты в руке; у карт на столе -1.</summary>
         public int HandIndex { get; set; } = -1;
@@ -71,6 +74,41 @@ namespace BackyardBet
         public void SetTexture(Texture2D tex)
         {
             if (_rend != null && tex != null) _rend.material.mainTexture = tex;
+        }
+
+        /// <summary>
+        /// Золотая рамка вокруг карты.
+        ///
+        /// Джокера в колоде из 52 карт нет, под него взят валет - и в руке
+        /// среди дам, королей и тузов он читается как чужая карта или сбой
+        /// текстуры. Рамка сразу говорит: карта особая, она за любой ранг.
+        /// </summary>
+        public void SetJoker(bool on)
+        {
+            if (on == (_frame != null)) return;
+
+            if (!on)
+            {
+                Destroy(_frame.gameObject);
+                _frame = null;
+                return;
+            }
+
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            go.name = "JokerFrame";
+            // коллайдер рамки перехватывал бы щелчок вместо самой карты
+            var col = go.GetComponent<Collider>();
+            if (col != null) Destroy(col);
+
+            go.transform.SetParent(transform, false);
+            go.transform.localScale = new Vector3(1.16f, 1.11f, 1f);
+            go.transform.localPosition = new Vector3(0f, 0f, 0.0015f);   // за картой
+
+            var r = go.GetComponent<Renderer>();
+            r.material = new Material(CardShader) { color = new Color(0.98f, 0.76f, 0.16f) };
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            _frame = go.transform;
         }
 
         static Vector3 Size(float k) => new Vector3(Width * k, Height * k, 1f);

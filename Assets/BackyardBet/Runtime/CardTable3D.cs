@@ -25,7 +25,7 @@ namespace BackyardBet
         public float cardVisible = 0.82f;
 
         [Tooltip("Разлёт веера, градусов на карту.")]
-        public float fanStep = 8f;
+        public float fanStep = 11f;      // карт всего три - веер можно шире
 
         [Tooltip("На сколько выдвигается выбранная карта, в высотах карты.")]
         public float pickLift = 0.55f;
@@ -126,6 +126,7 @@ namespace BackyardBet
                 var c = _hand[i];
                 c.HandIndex = i;
                 c.SetTexture(CardArt.FaceTexture((CardRank)hand[i], seedBase + i));
+                c.SetJoker((CardRank)hand[i] == CardRank.Joker);
 
                 float offset = i - (hand.Length - 1) * 0.5f;
                 float angle = -offset * fanStep;
@@ -269,8 +270,11 @@ namespace BackyardBet
         public void RevealPile(int[] ranks)
         {
             for (int i = 0; i < _pile.Count && i < ranks.Length; i++)
-                if (_pile[i] != null)
-                    _pile[i].SetTexture(CardArt.FaceTexture((CardRank)ranks[i], i));
+            {
+                if (_pile[i] == null) continue;
+                _pile[i].SetTexture(CardArt.FaceTexture((CardRank)ranks[i], i));
+                _pile[i].SetJoker((CardRank)ranks[i] == CardRank.Joker);
+            }
         }
 
         public void ClearPile()
