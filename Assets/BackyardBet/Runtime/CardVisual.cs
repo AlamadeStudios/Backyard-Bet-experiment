@@ -29,16 +29,39 @@ namespace BackyardBet
             go.transform.SetParent(parent, false);
             go.transform.localScale = new Vector3(Width, Height, 1f);
 
-            // коллайдер нужен только чтобы ловить щелчок мышью: как триггер
-            // он не мешает физике реквизита и не ловит чужие лучи
-            var col = go.GetComponent<Collider>();
-            if (col != null) col.isTrigger = true;
+            // У примитива Quad коллайдер сетчатый и плоский, а плоскую сетку
+            // нельзя сделать триггером - Unity ругается каждый кадр и
+            // оставляет карту твёрдой. Меняем на коробку: она ловит щелчок
+            // мышью и при этом не мешает физике реквизита.
+            var mesh = go.GetComponent<Collider>();
+            if (mesh != null) Destroy(mesh);
+            var box = go.AddComponent<BoxCollider>();
+            box.size = new Vector3(1f, 1f, 0.02f);
+            box.isTrigger = true;
 
             var cv = go.AddComponent<CardVisual>();
             cv._rend = go.GetComponent<Renderer>();
-            // Unlit: карту надо читать в любое время суток, а двор вечерний
-            cv._rend.material = new Material(Shader.Find("Unlit/Texture"));
+            cv._rend.material = new Material(CardShader);
+            cv._rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            cv._rend.receiveShadows = false;
             return cv;
+        }
+
+        static Shader _shader;
+
+        /// <summary>
+        /// Шейдер карты. Sprites/Default не гасит свет и рисует обе стороны
+        /// плоскости: карту надо читать в любое время суток - двор у нас
+        /// вечерний, - и она не должна пропадать, если повернулась изнанкой.
+        /// </summary>
+        static Shader CardShader
+        {
+            get
+            {
+                if (_shader == null) _shader = Shader.Find("Sprites/Default");
+                if (_shader == null) _shader = Shader.Find("Unlit/Texture");
+                return _shader;
+            }
         }
 
         public void SetTexture(Texture2D tex)
@@ -50,6 +73,16 @@ namespace BackyardBet
         {
             transform.localPosition = pos;
             transform.localRotation = rot;
+        }
+
+        /// <summary>
+        /// Размер карты в мире. Рука висит у самого лица, поэтому её размер
+        /// задаётся не в метрах, а от того, сколько экрана карта должна
+        /// занимать - иначе при смене обзора рука уезжает за край кадра.
+        /// </summary>
+        public void SetSize(float k)
+        {
+            transform.localScale = new Vector3(Width * k, Height * k, 1f);
         }
 
         /// <summary>Плавно уехать в мировую точку - бросок карты на стол.</summary>

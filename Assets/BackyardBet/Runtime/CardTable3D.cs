@@ -18,14 +18,17 @@ namespace BackyardBet
         [Tooltip("Насколько карты вынесены вперёд от глаз, м.")]
         public float handForward = 0.42f;
 
-        [Tooltip("Насколько опущены ниже линии взгляда, м.")]
-        public float handDrop = 0.24f;
+        [Tooltip("Высота карты в долях высоты экрана.")]
+        public float cardScreenHeight = 0.36f;
+
+        [Tooltip("Какая часть карты выступает над нижним краем кадра.")]
+        public float cardVisible = 0.86f;
 
         [Tooltip("Разлёт веера, градусов на карту.")]
         public float fanStep = 9f;
 
-        [Tooltip("На сколько приподнимается выбранная карта, м.")]
-        public float pickLift = 0.035f;
+        [Tooltip("На сколько приподнимается выбранная карта, в высотах карты.")]
+        public float pickLift = 0.28f;
 
         readonly List<CardVisual> _hand = new List<CardVisual>();
         readonly List<CardVisual> _pile = new List<CardVisual>();
@@ -48,16 +51,23 @@ namespace BackyardBet
 
         // ------------------------------------------------------------ рука
 
-        /// <summary>Разложить свою руку веером перед камерой.</summary>
-        public void ShowHand(int[] hand, Transform camera, ICollection<int> picked, int seedBase)
+        /// <summary>
+        /// Разложить свою руку веером перед камерой.
+        ///
+        /// Раскладка считается от поля зрения камеры, а не в метрах: сидя за
+        /// столом обзор сужен до 38 градусов, и рука, отложенная на глазок,
+        /// целиком уходит под нижний край экрана - карт просто не видно.
+        /// </summary>
+        public void ShowHand(int[] hand, Camera camera, ICollection<int> picked, int seedBase)
         {
             if (camera == null) { ClearHand(); return; }
+            var eye = camera.transform;
 
-            if (_handRoot == null || _handRoot.parent != camera)
+            if (_handRoot == null || _handRoot.parent != eye)
             {
                 if (_handRoot != null) Destroy(_handRoot.gameObject);
                 _handRoot = new GameObject("HandCards").transform;
-                _handRoot.SetParent(camera, false);
+                _handRoot.SetParent(eye, false);
                 _hand.Clear();
             }
 
@@ -70,21 +80,36 @@ namespace BackyardBet
             while (_hand.Count < hand.Length)
                 _hand.Add(CardVisual.Create(_handRoot, "HandCard"));
 
+            // дальше ближней плоскости отсечения, иначе карту срежет камера
+            float dist = Mathf.Max(handForward, camera.nearClipPlane * 1.4f);
+
+            // половина видимой высоты на этом расстоянии - вся раскладка
+            // меряется от неё, поэтому при любом обзоре рука лежит одинаково
+            float halfH = dist * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            float cardH = halfH * 2f * cardScreenHeight;
+            float k = cardH / CardVisual.Height;
+
+            // веер гнётся вокруг точки под кадром - так держат карты в руке
+            float radius = cardH * 2.2f;
+            float pivotY = -halfH + cardH * (cardVisible - 0.5f) - radius;
+
             for (int i = 0; i < hand.Length; i++)
             {
                 var c = _hand[i];
                 c.HandIndex = i;
                 c.SetTexture(CardArt.FaceTexture((CardRank)hand[i], seedBase + i));
+                c.SetSize(k);
 
-                // веер: середина руки перед лицом, края разведены по дуге
                 float offset = i - (hand.Length - 1) * 0.5f;
                 float angle = -offset * fanStep;
+                float rad = angle * Mathf.Deg2Rad;
                 bool up = picked != null && picked.Contains(i);
 
-                var pos = new Vector3(offset * CardVisual.Width * 0.62f,
-                                      -handDrop + (up ? pickLift : 0f)
-                                      - Mathf.Abs(offset) * 0.006f,
-                                      handForward);
+                var pos = new Vector3(
+                    -radius * Mathf.Sin(rad),
+                    pivotY + radius * Mathf.Cos(rad) + (up ? cardH * pickLift : 0f),
+                    // мизерный сдвиг по глубине: иначе соседние карты мерцают
+                    dist - i * 0.001f);
                 c.SetLocal(pos, Quaternion.Euler(0f, 0f, angle));
             }
         }
@@ -120,10 +145,11 @@ namespace BackyardBet
         /// Выложить стопку на сукно рубашкой вверх. Карты долетают из руки,
         /// поэтому ход читается как бросок, а не как мгновенная подмена.
         /// </summary>
-        public void ShowPile(int count, Transform fromCamera)
+        public void ShowPile(int count, Camera fromCamera)
         {
             var top = TableTop;
             if (top == null) return;
+            var eye = fromCamera != null ? fromCamera.transform : null;
 
             while (_pile.Count > count)
             {
@@ -137,9 +163,9 @@ namespace BackyardBet
                 var c = CardVisual.Create(null, "PileCard");
                 c.SetTexture(CardArt.BackTexture());
                 // старт от лица игрока, если он за столом - тогда видно бросок
-                if (fromCamera != null)
+                if (eye != null)
                     c.transform.SetPositionAndRotation(
-                        fromCamera.position + fromCamera.forward * 0.4f, fromCamera.rotation);
+                        eye.position + eye.forward * 0.4f, eye.rotation);
                 _pile.Add(c);
             }
 

@@ -370,7 +370,7 @@ namespace BackyardBet
         }
 
         /// <summary>Камера местного игрока - от неё летят карты и к ней цепляется рука.</summary>
-        Transform LocalEye()
+        Camera LocalEye()
         {
             var nm = NetworkManager.Singleton;
             if (nm == null || nm.LocalClient == null) return null;
@@ -380,8 +380,7 @@ namespace BackyardBet
             var seat = obj.GetComponent<PlayerSeating>();
             if (seat == null || !seat.Seated) return null;      // не за столом - рук не видно
 
-            var cam = obj.GetComponentInChildren<Camera>(true);
-            return cam != null ? cam.transform : null;
+            return obj.GetComponentInChildren<Camera>(true);
         }
 
         /// <summary>
@@ -400,10 +399,8 @@ namespace BackyardBet
             _cards.ShowHand(_myHand, eye, _picked, _round.Value);
 
             if (!Input.GetMouseButtonDown(0)) return;
-            var cam = eye.GetComponent<Camera>();
-            if (cam == null) return;
 
-            int hit = _cards.PickUnder(cam.ScreenPointToRay(Input.mousePosition));
+            int hit = _cards.PickUnder(eye.ScreenPointToRay(Input.mousePosition));
             if (hit >= 0) TogglePick(hit);
         }
 
