@@ -160,6 +160,13 @@ namespace BackyardBet
 
             _title.text = "СЧЁТ";
             Refresh();
+
+            // Ориентацию холста глазами по скриншоту не проверить: изнанка
+            // отличается от лица только зеркальностью букв. Пишем в лог -
+            // холст должен смотреть ровно против направления экрана.
+            Debug.Log(string.Format(
+                "[Backyard Bet] Табло: экран смотрит в {0}, холст в {1}, {2:0.00}x{3:0.00} м",
+                front.ToString("F2"), go.transform.forward.ToString("F2"), width, height));
         }
 
         static Text MakeText(RectTransform parent, Font font, TextAnchor align,
