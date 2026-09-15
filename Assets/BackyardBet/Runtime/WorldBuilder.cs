@@ -29,6 +29,7 @@ namespace BackyardBet
             ("Card",      0.002f),
             ("Bottle",    0.350f),
             ("Potato",    0.180f),
+            ("Patty",     0.120f),
         };
 
         // HOU_FrontDoor - дверь дома из генератора: у неё есть родитель-петля
@@ -352,12 +353,14 @@ namespace BackyardBet
                 var go = t.gameObject;
                 string s = go.name;
 
-                if (s.StartsWith("Flame"))
+                // Огонь - это движение, а не форма: неподвижная оранжевая
+                // капля в модели читалась пластилином. Меш прячем, на его
+                // место встаёт пламя с искрами, дымом и дрожащим светом.
+                if (s.StartsWith("Flame") || s == "Campfire")
                 {
-                    if (go.GetComponent<FlickerAnimator>() == null)
+                    if (go.GetComponentInChildren<FireEffect>() == null)
                     {
-                        AddFireLight(go);
-                        go.AddComponent<FlickerAnimator>();
+                        FireEffect.Replace(go, s == "Campfire" ? 2.4f : 0.9f, true);
                         n++;
                     }
                 }
@@ -437,31 +440,6 @@ namespace BackyardBet
                 made++;
             }
             return made;
-        }
-
-        /// <summary>
-        /// Живой огонёк к пламени.
-        ///
-        /// В FBX едут только меши и пустышки - источники света из Blender туда
-        /// не попадают вообще. Поэтому костёр и факелы светились бы только
-        /// собственным материалом, ничего вокруг не освещая. Свет вешаем сюда
-        /// же, чтобы FlickerAnimator подхватил его и модулировал вместе с
-        /// размером пламени.
-        /// </summary>
-        static void AddFireLight(GameObject flame)
-        {
-            if (flame.GetComponentInChildren<Light>() != null) return;
-
-            var go = new GameObject("FireLight");
-            go.transform.SetParent(flame.transform, false);
-            go.transform.localPosition = Vector3.up * 0.15f;
-
-            var light = go.AddComponent<Light>();
-            light.type = LightType.Point;
-            light.color = new Color(1f, 0.72f, 0.38f);
-            light.intensity = 3.2f;
-            light.range = 9f;
-            light.shadows = LightShadows.None;      // теней от каждого огня не тянем
         }
 
         /// <summary>Ровный тёплый свет от лампы - в комнатах и над мишенями.</summary>

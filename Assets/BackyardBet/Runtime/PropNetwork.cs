@@ -136,7 +136,14 @@ namespace BackyardBet
         }
 
         /// <summary>Бросить предмет. Только на хосте.</summary>
-        public void ServerThrow(int index, Vector3 direction, PlayerInteraction who)
+        /// <summary>
+        /// Бросок. power - доля от полного замаха, 0 значит просто положить.
+        ///
+        /// Силу считает хост по своей же формуле: клиент присылает только
+        /// насколько долго держал кнопку, и подменить это ему нечем.
+        /// </summary>
+        public void ServerThrow(int index, Vector3 direction, float power,
+                                PlayerInteraction who)
         {
             if (!IsServer) return;
             var p = Prop(index);
@@ -146,12 +153,22 @@ namespace BackyardBet
             int slot = HoldSlot(index);
             if (slot >= 0) _holds.RemoveAt(slot);
 
+            power = Mathf.Clamp01(power);
+            var dir = direction.normalized;
+
+            // Слабый бросок кладёт предмет под ноги, сильный - швыряет. Вверх
+            // добавляем тем больше, чем сильнее замах: иначе на полной силе
+            // всё летит по прямой и втыкается в землю в двух шагах.
+            float speed = p.throwForce * Mathf.Lerp(0.18f, 1f, power);
+            Vector3 lift = Vector3.up * Mathf.Lerp(0.05f, 0.28f, power);
+
             p.LastThrower = who.OwnerClientId;
             p.WasThrown = true;
             p.Body.isKinematic = false;
             p.Body.detectCollisions = true;
-            p.Body.linearVelocity = direction.normalized * p.throwForce;
-            p.Body.angularVelocity = Vector3.Cross(direction.normalized, Vector3.up) * p.throwSpin;
+            p.Body.linearVelocity = (dir + lift).normalized * speed;
+            p.Body.angularVelocity = Vector3.Cross(dir, Vector3.up)
+                                     * p.throwSpin * Mathf.Lerp(0.3f, 1f, power);
 
             who.SetHeldProp(-1);
         }

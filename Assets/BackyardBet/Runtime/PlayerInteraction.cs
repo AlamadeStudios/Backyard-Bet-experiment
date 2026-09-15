@@ -22,6 +22,9 @@ namespace BackyardBet
         [Tooltip("Где предмет висит в руке.")]
         public Transform handPoint;
 
+        [Tooltip("За сколько секунд замах набирает полную силу.")]
+        public float chargeTime = 1.1f;
+
         public Transform HandPoint => handPoint;
 
         /// <summary>Номер предмета в руке, -1 если рука пуста.</summary>
@@ -29,6 +32,8 @@ namespace BackyardBet
 
         IInteractable _target;
         string _prompt;
+        float _charge;                 // сколько держим кнопку броска, с
+        bool _charging;
         PlayerSeating _seating;
         readonly RaycastHit[] _hits = new RaycastHit[12];
 
@@ -59,8 +64,35 @@ namespace BackyardBet
             ScanForTarget();
 
             if (Input.GetKeyDown(KeyCode.E) && _target != null) SendInteract();
-            if (Input.GetMouseButtonDown(0) && HeldProp >= 0)
-                ThrowServerRpc(HeldProp, aim != null ? aim.forward : transform.forward);
+            Charge();
+        }
+
+        /// <summary>
+        /// Замах: держишь кнопку - копится сила, отпускаешь - бросок.
+        ///
+        /// Одним нажатием всё летело с одинаковой силой, и попасть во что-то
+        /// конкретное было делом случая. Здесь силу выбирает игрок, а шкала
+        /// под прицелом показывает, сколько набрано.
+        /// </summary>
+        void Charge()
+        {
+            if (HeldProp < 0)
+            {
+                _charging = false;
+                _charge = 0f;
+                return;
+            }
+
+            if (Input.GetMouseButtonDown(0)) { _charging = true; _charge = 0f; }
+            if (_charging && Input.GetMouseButton(0))
+                _charge = Mathf.Min(_charge + Time.deltaTime, chargeTime);
+
+            if (!_charging || !Input.GetMouseButtonUp(0)) return;
+
+            _charging = false;
+            ThrowServerRpc(HeldProp, aim != null ? aim.forward : transform.forward,
+                           chargeTime > 0f ? _charge / chargeTime : 1f);
+            _charge = 0f;
         }
 
         /// <summary>
@@ -149,10 +181,10 @@ namespace BackyardBet
         }
 
         [ServerRpc]
-        void ThrowServerRpc(int propIndex, Vector3 direction)
+        void ThrowServerRpc(int propIndex, Vector3 direction, float power)
         {
             if (PropNetwork.Instance == null) return;
-            PropNetwork.Instance.ServerThrow(propIndex, direction, this);
+            PropNetwork.Instance.ServerThrow(propIndex, direction, power, this);
         }
 
         [ServerRpc]
@@ -197,10 +229,37 @@ namespace BackyardBet
             GUI.color = Color.white;
 
             if (HeldProp >= 0)
-                Label(new Rect(cx - 300f, Screen.height - 150f, 600f, 30f), "ЛКМ — бросить");
+            {
+                Label(new Rect(cx - 300f, Screen.height - 150f, 600f, 30f),
+                      "ЛКМ (удерживай) — бросить");
+                DrawCharge(cx, cy);
+            }
 
             if (!string.IsNullOrEmpty(_prompt))
                 Label(new Rect(cx - 300f, Screen.height - 120f, 600f, 40f), _prompt);
+        }
+
+        /// <summary>
+        /// Шкала замаха под прицелом. Без неё сила броска - вслепую: пока
+        /// предмет не улетел, игрок не знает, сколько набрал.
+        /// </summary>
+        void DrawCharge(float cx, float cy)
+        {
+            if (!_charging || chargeTime <= 0f) return;
+
+            float k = Mathf.Clamp01(_charge / chargeTime);
+            const float w = 220f, h = 10f;
+            var back = new Rect(cx - w * 0.5f, cy + 40f, w, h);
+
+            GUI.color = new Color(0f, 0f, 0f, 0.55f);
+            GUI.DrawTexture(back, Texture2D.whiteTexture);
+
+            // от жёлтого к красному: полный замах должен читаться без цифр
+            GUI.color = Color.Lerp(new Color(1f, 0.85f, 0.3f),
+                                   new Color(1f, 0.32f, 0.12f), k);
+            GUI.DrawTexture(new Rect(back.x + 2f, back.y + 2f,
+                                     (w - 4f) * k, h - 4f), Texture2D.whiteTexture);
+            GUI.color = Color.white;
         }
 
         internal static void Label(Rect r, string text)
