@@ -480,8 +480,10 @@ def build_house():
     # свес влезал в неё, а её крыша - в жилую комнату.
     obj_from(bm_prism(roof_p, HW + 1.4, 0.12), "Roof", mat['roof'],
              loc=(HX - 0.7, HY, 0.6 + HH), rot=(0, 0, math.radians(90)))
-    obj_from(bm_box(1.4, 1.4, 5.0, 0.10), "Chimney", mat['stone'],
-             loc=(HX - 5.0, HY + 2.6, 0.6 + HH + 1.4))
+    # Труба начинается над потолком. Раньше она шла от 5.0 м, а потолок
+    # лежит на 5.86 - нижние 0.86 м торчали посреди жилой комнаты.
+    obj_from(bm_box(1.4, 1.4, 4.0, 0.10), "Chimney", mat['stone'],
+             loc=(HX - 5.0, HY + 2.6, floor_z + HH + 2.0))
     # ---- patio slab in front of the house
     obj_from(bm_box(21.0, 5.4, 0.36, 0.08), "Patio", mat['concrete'],
              loc=(HX, 17.4, 0.12))
@@ -1292,7 +1294,7 @@ def build_bowling():
     # на 4.1 м при потолке 4.545 и лампы висели в воздухе.
     ceil_bottom = 0.35 + AH + 0.17 - 0.175
     shade_top = 2.85 + 0.17
-    cord_len = ceil_bottom - shade_top
+    cord_len = ceil_bottom - shade_top + 0.06      # заходит в потолок
     for lx in (12.0, 17.0, 22.0):
         obj_from(bm_cyl(0.03, 0.03, cord_len, 8, 0.0), "LampCord", mat['black'],
                  loc=(lx, LANE_Y, (ceil_bottom + shade_top) * 0.5), smooth=True, angle=60)
@@ -1822,9 +1824,13 @@ def blocks_cam(x, y, half=2.6):
 def spot_free(x, y, pad=0.0, tall=False, cam_half=2.6):
     for sx, sy, sr in STATIONS:
         if math.hypot(x - sx, y - sy) < sr + pad: return False
-    if -15.0 < x < 3.0 and 19.0 < y < 33.0: return False       # house
-    if 1.0 < x < 31.0 and 19.0 < y < 30.5: return False        # annex
-    if -17.0 < x < 6.0 and 14.0 < y < 21.0: return False       # patio
+    # Запас вокруг построек нужен только высоким: раньше pad учитывался
+    # лишь вокруг станций, и дерево вставало в 0.66 м от стены дома - крона
+    # радиусом под три метра пролезала сквозь стену прямо в комнату.
+    b = pad if tall else 0.0
+    if -15.0 - b < x < 3.0 + b and 19.0 - b < y < 33.0 + b: return False   # house
+    if 1.0 - b < x < 31.0 + b and 19.0 - b < y < 30.5 + b: return False    # annex
+    if -17.0 - b < x < 6.0 + b and 14.0 - b < y < 21.0 + b: return False   # patio
     if max(abs(x), abs(y)) > FENCE - 2.2: return False
     t = (y + FENCE) / 53.0
     if 0.0 <= t <= 1.0:
@@ -2071,26 +2077,9 @@ def build_dressing():
              loc=(-23.7, 12.6, 0.30), rot=(math.radians(90), 0, 0.7),
              smooth=True, angle=45)
 
-    # ---------- bunting along the fence + garden lanterns on the path ----------
-    flag = obj_from(bm_prism([(-0.24, 0.0), (0.24, 0.0), (0.0, -0.56)], 0.012,
-                             0.004, 1), "Flag", mat['red'],
-                    loc=(0, 0, -200), smooth=False)
-    flag_mats = [mat['red'], mat['yellow'], mat['blue'], mat['white'], mat['green']]
-    flags = [flag] + [obj_from(bm_prism([(-0.24, 0.0), (0.24, 0.0), (0.0, -0.56)],
-                                        0.012, 0.004, 1), "Flag%d" % i, m,
-                               loc=(0, 0, -200), smooth=False)
-                      for i, m in enumerate(flag_mats[1:], 1)]
-    for side in range(4):
-        for i in range(46):
-            t = i / 46.0
-            span = FENCE * 2
-            if side == 0: fx2, fy2 = -FENCE + span * t, -FENCE + 0.35
-            elif side == 1: fx2, fy2 = FENCE - 0.35, -FENCE + span * t
-            elif side == 2: fx2, fy2 = FENCE - span * t, FENCE - 0.35
-            else: fx2, fy2 = -FENCE + 0.35, FENCE - span * t
-            sag = math.sin((i % 6) / 6.0 * math.pi) * 0.16
-            dup(flags[i % len(flags)], (fx2, fy2, 2.28 - sag),
-                rot=(0, 0, random.uniform(-0.2, 0.2)), smooth=False)
+    # ---------- garden lanterns on the path ----------
+    # Треугольные флажки по всему забору убраны: 184 штуки по периметру
+    # мельтешили в каждом кадре и ничего не добавляли двору.
     yy = -FENCE + 2.0
     while yy < 14.0:
         t = (yy + FENCE) / 53.0
