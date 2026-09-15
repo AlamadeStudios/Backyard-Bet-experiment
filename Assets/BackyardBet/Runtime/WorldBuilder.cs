@@ -51,8 +51,9 @@ namespace BackyardBet
         ///
         /// Вместе с забавой уходит и постройка над ней: пустая пергола и
         /// тент без стола - это не двор, а декорации, и они загораживают дом.
-        /// Остаётся только пристройка боулинга: она приделана к дому, и без
-        /// неё в стене была бы дыра вместе с входной дверью.
+        /// Пристройка боулинга - исключение: она приделана к дому, и без неё
+        /// в стене была бы дыра вместе с входной дверью, поэтому коробка
+        /// остаётся, а вычищается только её нутро - см. AnnexKeep.
         /// </summary>
         static readonly string[] Hidden =
         {
@@ -65,9 +66,6 @@ namespace BackyardBet
             // бильярд: стол, лузы, пятнадцать шаров, кий и пергола над ними
             "PoolFelt", "PoolFrame", "PoolLeg", "PoolRails", "Pocket",
             "CueBall", "CueStick", "Ball", "Pergola", "PergPost",
-
-            // боулинг: дорожка, жёлоба, кегли и шар. Само помещение остаётся
-            "Lane", "Gutter", "Approach", "Pin", "PinBand", "BallReturn", "BowlBall",
 
             // лавка перед домом - столешница с двумя лавками - и тент над
             // ней: четыре стойки с крышей стоят прямо напротив фасада, а
@@ -91,6 +89,31 @@ namespace BackyardBet
         ///  * бутылки - те, что стояли на столешнице, в 0.93 м, ближайшая
         ///    чужая в 3.03 м.
         /// </summary>
+        /// <summary>
+        /// Что оставить внутри пристройки боулинга.
+        ///
+        /// Внутри полторы сотни объектов - дорожка, кегли, диван, полка с
+        /// обувью, стойка со снеками, афиши, пиксельное табло. Перечислять их
+        /// по именам бессмысленно и опасно: жёлоб дорожки называется Gutter,
+        /// ровно как водостоки на крыше дома, и по имени вместе с боулингом
+        /// уходили они. Поэтому наоборот: убираем всё, что внутри коробки
+        /// здания, а здесь перечислено то немногое, что остаётся, - сама
+        /// коробка и свет.
+        ///
+        /// Светильники трогать не надо ещё и потому, что источники света -
+        /// объекты без меша, а правило работает только по видимой геометрии.
+        /// </summary>
+        static readonly string[] AnnexKeep =
+        {
+            "AnnexFloor", "AnnexWallX", "AnnexWallY", "AnnexCeil", "AnnexRoof",
+            "AnnexGutter", "AnnexDoorFrame", "ANX_BowlingDoor",
+            "WinFrame", "WinGlass",
+            "LampBulb", "LampCord", "LampShade",
+        };
+
+        /// <summary>Высота помещения пристройки, м - от пола до конька.</summary>
+        const float AnnexHeight = 6f;
+
         static readonly (string name, float radius)[] HiddenWith =
         {
             ("Apron",       4f),    // бетонная площадка под забавой
@@ -273,6 +296,44 @@ namespace BackyardBet
                     hidden++;
                     break;
                 }
+            }
+            hidden += HideAnnexInside(all);
+            return hidden;
+        }
+
+        /// <summary>
+        /// Вычистить пристройку боулинга, оставив здание и свет.
+        ///
+        /// Границы берём с плиты пола - она лежит ровно по footprint здания,
+        /// - и тянем вверх до конька. Координаты нигде не вбиты: подвинут
+        /// пристройку в генераторе, правило переедет вместе с ней.
+        /// </summary>
+        static int HideAnnexInside(Transform[] all)
+        {
+            Transform floor = null;
+            foreach (var t in all)
+                if (t.name == "AnnexFloor") { floor = t; break; }
+
+            var fr = floor != null ? floor.GetComponent<Renderer>() : null;
+            if (fr == null) return 0;
+
+            Bounds room = fr.bounds;
+            room.Encapsulate(new Vector3(room.center.x, room.max.y + AnnexHeight, room.center.z));
+
+            int hidden = 0;
+            foreach (var t in all)
+            {
+                if (!t.gameObject.activeSelf) continue;
+                if (t.GetComponent<Renderer>() == null) continue;   // свет и метки не трогаем
+                if (!room.Contains(t.position)) continue;
+
+                bool keep = false;
+                foreach (var name in AnnexKeep)
+                    if (Matches(t.name, name)) { keep = true; break; }
+                if (keep) continue;
+
+                t.gameObject.SetActive(false);
+                hidden++;
             }
             return hidden;
         }
