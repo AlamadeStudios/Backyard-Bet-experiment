@@ -14,7 +14,7 @@ using BackyardBet;
 public static class SceneBuilder
 {
     const string MapPath = "Assets/BackyardBet/Map/BackyardBet.fbx";
-    const string PrefabPath = "Assets/BackyardBet/Prefabs/Player.prefab";
+    const string PrefabPath = "Assets/BackyardBet/Resources/Player.prefab";
     const string ScenePath = "Assets/BackyardBet/Scenes/Backyard.unity";
 
     [MenuItem("Backyard Bet/Собрать сцену")]

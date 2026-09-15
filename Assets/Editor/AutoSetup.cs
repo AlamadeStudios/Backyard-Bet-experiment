@@ -19,7 +19,7 @@ using BackyardBet;
 [InitializeOnLoad]
 public static class AutoSetup
 {
-    const string GameRootPath = "Assets/BackyardBet/Prefabs/GameRoot.prefab";
+    const string GameRootPath = "Assets/BackyardBet/Resources/GameRoot.prefab";
 
     static AutoSetup()
     {
@@ -49,12 +49,12 @@ public static class AutoSetup
     static void EnsurePlayerPrefab()
     {
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
-            "Assets/BackyardBet/Prefabs/Player.prefab");
+            "Assets/BackyardBet/Resources/Player.prefab");
         if (prefab != null && prefab.GetComponent<PlayerSeating>() != null) return;
 
         Debug.Log("[Backyard Bet] В префабе игрока не хватает компонентов - пересобираю.");
         GameplaySetup.RebuildPlayer();
-        AssetDatabase.ImportAsset("Assets/BackyardBet/Prefabs/Player.prefab",
+        AssetDatabase.ImportAsset("Assets/BackyardBet/Resources/Player.prefab",
                                   ImportAssetOptions.ForceUpdate);
     }
 

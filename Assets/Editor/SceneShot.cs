@@ -20,7 +20,7 @@ public static class SceneShot
 
         // ---- персонаж игрока: ставим префаб рядом со столом и снимаем сбоку
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
-            "Assets/BackyardBet/Prefabs/Player.prefab");
+            "Assets/BackyardBet/Resources/Player.prefab");
         GameObject player = null;
         if (prefab != null)
         {

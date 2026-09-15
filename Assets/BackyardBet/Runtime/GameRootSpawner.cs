@@ -82,7 +82,7 @@ namespace BackyardBet
 
             Debug.LogError("[Backyard Bet] GameRoot не заспавнился - двери и предметы работать " +
                            "не будут. Обычно помогает переимпорт префаба: выдели " +
-                           "Assets/BackyardBet/Prefabs/GameRoot.prefab и нажми Assets > Reimport.");
+                           "Assets/BackyardBet/Resources/GameRoot.prefab и нажми Assets > Reimport.");
         }
     }
 }

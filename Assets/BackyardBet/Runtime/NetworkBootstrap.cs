@@ -30,6 +30,8 @@ namespace BackyardBet
         string _portField = BasePort.ToString();
         ushort _localPort;
         string _status = "Подключение к Unity Services...";
+        string _myAddress = "";
+        string _joinAddress = "";
         bool _busy = true;
         bool _ready;
         Lobby _lobby;
@@ -167,6 +169,14 @@ namespace BackyardBet
             return 0;
         }
 
+        /// <summary>
+        /// Поднять хост.
+        ///
+        /// Слушаем 0.0.0.0, а не 127.0.0.1: на петлевом адресе хост виден
+        /// только своей же машине, и друг по сети до него не достучится.
+        /// Ноль-адрес включает в себя и петлевой, поэтому второе окно на этой
+        /// же машине подключается как раньше.
+        /// </summary>
         void StartLocalHost()
         {
             ushort port = FindFreePort(BasePort);
@@ -178,15 +188,17 @@ namespace BackyardBet
             }
 
             var transport = GetComponent<UnityTransport>();
-            transport.SetConnectionData(LocalAddress, port, LocalAddress);
-            Debug.Log("[Backyard Bet] Свободный порт найден: " + port +
-                      ", транспорт настроен на " + transport.ConnectionData.Address +
-                      ":" + transport.ConnectionData.Port);
+            transport.SetConnectionData(LocalAddress, port, "0.0.0.0");
 
             if (!TryStartHost()) return;
 
             _localPort = port;
-            _status = "Локальный хост запущен на порту " + port + ".";
+            _myAddress = LocalIPv4();
+            _status = "Комната открыта. Друзьям: адрес " + _myAddress + ", порт " + port +
+                      ". В одной сети подключатся сразу; через интернет нужен проброс " +
+                      "порта " + port + " (UDP) или общая VPN.";
+            Debug.Log("[Backyard Bet] Хост слушает 0.0.0.0:" + port +
+                      ", свой адрес в сети " + _myAddress);
         }
 
         void StartLocalClient(ushort port)
@@ -194,6 +206,51 @@ namespace BackyardBet
             GetComponent<UnityTransport>().SetConnectionData(LocalAddress, port);
             if (!TryStartClient()) return;
             _status = "Подключаюсь к локальному хосту на порту " + port + "...";
+        }
+
+        /// <summary>Подключиться к другу по адресу и порту.</summary>
+        void StartDirectClient(string address, ushort port)
+        {
+            address = (address ?? "").Trim();
+            if (address.Length == 0)
+            {
+                _status = "Введи адрес хоста - его показывает окно того, кто открыл комнату.";
+                return;
+            }
+
+            GetComponent<UnityTransport>().SetConnectionData(address, port);
+            if (!TryStartClient()) return;
+            _status = "Подключаюсь к " + address + ":" + port + "...";
+        }
+
+        /// <summary>
+        /// Свой адрес в локальной сети.
+        ///
+        /// Берём его по исходящему маршруту, а не перебором интерфейсов: у
+        /// машины их обычно несколько - виртуальные сетевые карты, VPN, - и
+        /// перебор легко выдаёт тот, по которому до игрока не достучаться.
+        /// Наружу при этом ничего не отправляется: UDP-сокету достаточно
+        /// выбрать маршрут.
+        /// </summary>
+        static string LocalIPv4()
+        {
+            try
+            {
+                using (var probe = new System.Net.Sockets.Socket(
+                           System.Net.Sockets.AddressFamily.InterNetwork,
+                           System.Net.Sockets.SocketType.Dgram,
+                           System.Net.Sockets.ProtocolType.Udp))
+                {
+                    probe.Connect("8.8.8.8", 65530);
+                    var ep = probe.LocalEndPoint as System.Net.IPEndPoint;
+                    if (ep != null) return ep.Address.ToString();
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[Backyard Bet] Не удалось определить свой адрес: " + e.Message);
+            }
+            return LocalAddress;
         }
 
         // без пинга лобби закрывается примерно через 30 секунд
@@ -242,11 +299,13 @@ namespace BackyardBet
             var s = new GUIStyle(GUI.skin.label) { fontSize = 14, wordWrap = true };
             s.normal.textColor = new Color(1f, 0.92f, 0.72f);
 
-            GUI.DrawTexture(new Rect(12f, 12f, 340f, 46f), PanelTexture());
+            GUI.DrawTexture(new Rect(12f, 12f, 340f, 66f), PanelTexture());
             GUI.Label(new Rect(22f, 18f, 320f, 20f), _status, s);
             string port = _localPort > 0 ? "   ·   порт " + _localPort : "";
             GUI.Label(new Rect(22f, 36f, 320f, 20f),
                       "Игроков: " + nm.ConnectedClientsIds.Count + "   ·   Esc — курсор" + port, s);
+            if (!string.IsNullOrEmpty(_myAddress))
+                GUI.Label(new Rect(22f, 54f, 320f, 20f), "Твой адрес: " + _myAddress, s);
         }
 
         static ushort ParsePort(string s) =>
@@ -333,30 +392,43 @@ namespace BackyardBet
 
             float bx = x + 60f, bw = w - 120f, by = y + 108f;
 
-            // Локальная игра первой: она не требует ни интернета, ни Unity
-            // Services, поэтому с неё игра запускается всегда.
-            if (GUI.Button(new Rect(bx, by, bw, 46f), "ИГРАТЬ ВО ДВОРЕ", btn))
+            // Прямое подключение идёт первым: оно не требует ни аккаунта
+            // Unity, ни привязки проекта к облаку, и работает всегда.
+            if (GUI.Button(new Rect(bx, by, bw, 46f), "ОТКРЫТЬ КОМНАТУ", btn))
                 StartLocalHost();
             GUI.Label(new Rect(bx, by + 48f, bw, 18f),
-                      "одиночная игра с ботами, порт подбирается сам", hint);
+                      "ты хост: друзья подключатся по твоему адресу", hint);
 
-            by += 78f;
+            by += 74f;
+            GUI.Label(new Rect(bx, by, bw, 18f), "Подключиться к другу:", hint);
+            by += 20f;
+            _joinAddress = GUI.TextField(new Rect(bx, by, bw * 0.46f, 32f), _joinAddress);
+            _portField = GUI.TextField(new Rect(bx + bw * 0.48f, by, bw * 0.18f, 32f),
+                                       _portField);
+            if (GUI.Button(new Rect(bx + bw * 0.68f, by, bw * 0.32f, 32f),
+                           "ПОДКЛЮЧИТЬСЯ", small))
+                StartDirectClient(_joinAddress, ParsePort(_portField));
+            by += 34f;
+            GUI.Label(new Rect(bx, by, bw, 18f), "адрес хоста и порт — их показывает его окно", hint);
+
+            by += 30f;
+            // Облачная комната требует, чтобы проект был привязан к Unity
+            // Cloud. Пока этого нет, кнопки серые - и мы прямо говорим почему,
+            // а не оставляем игрока гадать.
             GUI.enabled = !_busy && _ready;
-            if (GUI.Button(new Rect(bx, by, bw, 40f), "СОЗДАТЬ КОМНАТУ", btn))
+            if (GUI.Button(new Rect(bx, by, bw * 0.52f, 30f), "Комната через Unity", small))
                 HostGame();
-            by += 46f;
-            _codeField = GUI.TextField(new Rect(bx, by, bw * 0.52f, 34f), _codeField);
-            if (GUI.Button(new Rect(bx + bw * 0.56f, by, bw * 0.44f, 34f),
-                           "Войти по коду", small))
+            _codeField = GUI.TextField(new Rect(bx + bw * 0.56f, by, bw * 0.24f, 30f), _codeField);
+            if (GUI.Button(new Rect(bx + bw * 0.82f, by, bw * 0.18f, 30f), "Код", small))
                 JoinGame(_codeField.Trim().ToUpperInvariant());
             GUI.enabled = true;
-
-            by += 46f;
-            GUI.Label(new Rect(bx, by, bw * 0.52f, 22f), "второе окно на этой машине:", hint);
-            _portField = GUI.TextField(new Rect(bx + bw * 0.56f, by, bw * 0.18f, 22f),
-                                       _portField);
-            if (GUI.Button(new Rect(bx + bw * 0.78f, by, bw * 0.22f, 22f), "Клиент", small))
-                StartLocalClient(ParsePort(_portField));
+            if (!_ready)
+            {
+                by += 32f;
+                GUI.Label(new Rect(bx, by, bw, 18f),
+                          "серые, пока проект не привязан к Unity Cloud — прямое " +
+                          "подключение работает и без этого", hint);
+            }
 
             by += 40f;
             if (GUI.Button(new Rect(bx + bw * 0.3f, by, bw * 0.4f, 30f), "Выход", small))

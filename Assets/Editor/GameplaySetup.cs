@@ -14,7 +14,7 @@ using BackyardBet;
 /// </summary>
 public static class GameplaySetup
 {
-    const string PrefabPath = "Assets/BackyardBet/Prefabs/Player.prefab";
+    const string PrefabPath = "Assets/BackyardBet/Resources/Player.prefab";
     const string CharPath = "Assets/BackyardBet/Characters/CH_Bo.fbx";
 
     // Размеры из make_character() в backyard_bet.py: ступни на 0, глаза на

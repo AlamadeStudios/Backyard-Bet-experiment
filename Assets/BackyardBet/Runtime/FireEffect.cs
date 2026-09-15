@@ -271,13 +271,26 @@ namespace BackyardBet
             }
         }
 
+        /// <summary>
+        /// Материал частицы.
+        ///
+        /// В собранной игре встроенный шейдер может быть вырезан, если на него
+        /// никто не ссылается из ассетов, - поэтому есть запасной. Sprites
+        /// /Default в списке всегда включаемых, до него сборка доедет всегда.
+        /// Если упали на запасной, пишем об этом: огонь будет выглядеть иначе,
+        /// и лучше знать почему.
+        /// </summary>
         static Material Make(string shaderName, Color c)
         {
-            var sh = Shader.Find(shaderName)
-                     ?? Shader.Find("Particles/Standard Unlit")
-                     ?? Shader.Find("Sprites/Default");
-            var m = new Material(sh) { mainTexture = Dot, color = c };
-            return m;
+            var sh = Shader.Find(shaderName);
+            if (sh == null)
+            {
+                sh = Shader.Find("Particles/Standard Unlit") ?? Shader.Find("Sprites/Default");
+                Debug.LogWarning("[Backyard Bet] Шейдер " + shaderName +
+                                 " недоступен, огонь рисуется запасным " +
+                                 (sh != null ? sh.name : "никаким"));
+            }
+            return new Material(sh) { mainTexture = Dot, color = c };
         }
 
         /// <summary>
