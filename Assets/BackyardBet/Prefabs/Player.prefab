@@ -175,6 +175,7 @@ MonoBehaviour:
   reach: 3.5
   aim: {fileID: 7429839449789516229}
   handPoint: {fileID: 5348198617614813542}
+  chargeTime: 1.1
 --- !u!114 &6680533923435557294
 MonoBehaviour:
   m_ObjectHideFlags: 0

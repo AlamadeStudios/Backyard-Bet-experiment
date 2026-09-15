@@ -54,11 +54,11 @@ namespace BackyardBet
 
         void Flame()
         {
-            var ps = NewSystem("Flame", 0.55f * size, 90);
+            var ps = NewSystem("Flame", 0.55f * size, 42);
             var main = ps.main;
             main.startLifetime = new ParticleSystem.MinMaxCurve(0.38f * size, 0.62f * size);
             main.startSpeed = new ParticleSystem.MinMaxCurve(0.7f * size, 1.5f * size);
-            main.startSize = new ParticleSystem.MinMaxCurve(0.30f * size, 0.62f * size);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.18f * size, 0.38f * size);
             main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
             main.gravityModifier = -0.08f;              // пламя тянет вверх
 
@@ -71,15 +71,19 @@ namespace BackyardBet
             var col = ps.colorOverLifetime;
             col.enabled = true;
             col.color = Gradient(
-                new[] { new Color(1f, 0.95f, 0.72f), new Color(1f, 0.62f, 0.16f),
-                        new Color(0.85f, 0.22f, 0.05f) },
-                new[] { 0f, 1f, 1f, 0.55f, 0f });
+                new[] { new Color(1f, 0.92f, 0.62f), new Color(1f, 0.55f, 0.14f),
+                        new Color(0.78f, 0.18f, 0.04f) },
+                new[] { 0f, 0f, 0.15f, 0.62f, 0.6f, 0.45f, 1f, 0f });
 
             var sz = ps.sizeOverLifetime;
             sz.enabled = true;
             sz.size = new ParticleSystem.MinMaxCurve(1f, Curve(0f, 1f, 0.35f, 1f, 1f, 0.15f));
 
-            Render(ps, additive: true, stretch: false);
+            // Пламя рисуем обычным смешением, а не аддитивным: полтора
+            // десятка светящихся клочков друг на друге складываются в белое
+            // пятно, на которое больно смотреть. Аддитивными остаются искры -
+            // их мало и они мелкие.
+            Render(ps, additive: false, stretch: false);
         }
 
         void Sparks()
@@ -106,7 +110,7 @@ namespace BackyardBet
             col.enabled = true;
             col.color = Gradient(
                 new[] { new Color(1f, 0.92f, 0.6f), new Color(1f, 0.5f, 0.1f) },
-                new[] { 0f, 1f, 0.7f, 1f, 0f });
+                new[] { 0f, 0f, 0.12f, 0.9f, 1f, 0f });
 
             Render(ps, additive: true, stretch: true);
         }
@@ -153,8 +157,8 @@ namespace BackyardBet
             _light = go.AddComponent<Light>();
             _light.type = LightType.Point;
             _light.color = new Color(1f, 0.68f, 0.32f);
-            _light.range = 7f * size;
-            _lightBase = 2.2f * size;
+            _light.range = 4.5f * size;
+            _lightBase = 0.9f * size;
             _light.intensity = _lightBase;
             _light.shadows = LightShadows.None;    // мягкий заполняющий свет
         }
@@ -202,8 +206,20 @@ namespace BackyardBet
             r.sortingFudge = additive ? -2f : 0f;
         }
 
+        /// <summary>
+        /// Градиент из цветов и ключей прозрачности.
+        ///
+        /// alphaPairs идут парами «время, прозрачность». Нечётная длина - это
+        /// опечатка в вызове: последняя пара молча потерялась бы, частицы
+        /// перестали бы гаснуть и слились в сплошное пятно. Один раз так уже
+        /// вышло, поэтому проверяем.
+        /// </summary>
         static ParticleSystem.MinMaxGradient Gradient(Color[] colors, float[] alphaPairs)
         {
+            if (alphaPairs.Length % 2 != 0)
+                Debug.LogError("[Backyard Bet] Ключи прозрачности огня заданы не парами: "
+                               + alphaPairs.Length);
+
             var g = new UnityEngine.Gradient();
             var ck = new GradientColorKey[colors.Length];
             for (int i = 0; i < colors.Length; i++)
