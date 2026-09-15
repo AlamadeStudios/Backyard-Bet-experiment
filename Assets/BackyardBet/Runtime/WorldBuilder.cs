@@ -77,19 +77,24 @@ namespace BackyardBet
         };
 
         /// <summary>
-        /// Что убрано не по имени, а по месту.
+        /// Что уходит вслед за убранным - подстилка забавы, а не сама забава.
         ///
-        /// Бетонные площадки под забавами называются одинаково - Apron, - и
-        /// по одному имени вместе с бильярдной убралась бы площадка дартса и
-        /// метания топора. Координаты сняты с самой карты и заданы
-        /// относительно корня Map, чтобы не зависеть от того, где он стоит.
+        /// Бетонные площадки под всеми забавами называются одинаково - Apron,
+        /// - и по имени вместе с бильярдной убралась бы площадка дартса и
+        /// метания топора. Поэтому площадка уходит не по имени и не по
+        /// вбитым координатам, а вместе с тем, что на ней стояло: если рядом
+        /// ничего не осталось, значит и подстилка не нужна.
         /// </summary>
-        static readonly (string name, Vector2 at, float radius)[] HiddenSpots =
-        {
-            ("Apron", new Vector2(-18f, -10f), 5f),   // под бильярдом
-            ("Apron", new Vector2(-10f,  12f), 5f),   // под бир-понгом
-            ("Apron", new Vector2( -6f,  22f), 5f),   // под рогаткой
-        };
+        static readonly string[] HiddenUnder = { "Apron" };
+
+        /// <summary>
+        /// Сколько метров считать «на этой же площадке».
+        ///
+        /// Убранный инвентарь стоит на своей площадке вплотную - дальше 0.05 м
+        /// ни один не отходит, - а ближайшая чужая площадка лежит в 7.5 м.
+        /// Четыре метра делят этот зазор с запасом в обе стороны.
+        /// </summary>
+        const float UnderRadius = 4f;
 
         bool _built;
 
@@ -221,30 +226,44 @@ namespace BackyardBet
         /// </summary>
         static int HideRemoved(GameObject map)
         {
-            int hidden = 0;
-            foreach (var t in map.GetComponentsInChildren<Transform>(true))
+            var all = map.GetComponentsInChildren<Transform>(true);
+            var gone = new System.Collections.Generic.List<Vector3>();
+
+            // первым проходом убираем сам инвентарь и запоминаем, где он стоял
+            foreach (var t in all)
             {
                 if (!t.gameObject.activeSelf) continue;
 
                 bool off = false;
                 foreach (var name in Hidden)
                     if (Matches(t.name, name)) { off = true; break; }
-
-                if (!off)
-                {
-                    var p = map.transform.InverseTransformPoint(t.position);
-                    foreach (var (name, at, radius) in HiddenSpots)
-                    {
-                        if (!Matches(t.name, name)) continue;
-                        if (Vector2.Distance(new Vector2(p.x, p.z), at) > radius) continue;
-                        off = true;
-                        break;
-                    }
-                }
-
                 if (!off) continue;
+
+                gone.Add(t.position);
                 t.gameObject.SetActive(false);
-                hidden++;
+            }
+
+            int hidden = gone.Count;
+
+            // вторым - подстилку под ним. Выключенный объект сохраняет свои
+            // координаты, поэтому порядок проходов роли не играет
+            foreach (var t in all)
+            {
+                if (!t.gameObject.activeSelf) continue;
+
+                bool slab = false;
+                foreach (var name in HiddenUnder)
+                    if (Matches(t.name, name)) { slab = true; break; }
+                if (!slab) continue;
+
+                foreach (var at in gone)
+                {
+                    var d = t.position - at;
+                    if (new Vector2(d.x, d.z).magnitude > UnderRadius) continue;
+                    t.gameObject.SetActive(false);
+                    hidden++;
+                    break;
+                }
             }
             return hidden;
         }
