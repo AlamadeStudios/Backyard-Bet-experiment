@@ -337,6 +337,7 @@ def build_mats():
     mat['shirtD'] = M("ShirtD", (0.32, 0.62, 0.28), 0.75)
     mat['bulb'] = M("Bulb", (1.0, 0.90, 0.65), 0.30, emit=(1.0, 0.82, 0.45, 1.4))
     mat['neon'] = M("Neon", (0.30, 0.85, 1.0), 0.30, emit=(0.25, 0.80, 1.0, 2.2))
+    mat['screen'] = M("Screen", (0.04, 0.05, 0.07), 0.22, spec=0.7)
     mat['flame'] = M("Flame", (1.0, 0.55, 0.12), 0.4, emit=(1.0, 0.38, 0.05, 0.9))
     mat['smoke'] = M("Smoke", (0.86, 0.86, 0.88), 1.0, spec=0.05, alpha=0.55)
     mat['potato'] = M("Potato", (0.76, 0.62, 0.38), 0.90)
@@ -1768,7 +1769,10 @@ build_decor()
 # ============================================================ dressing the yard
 FIRE = (-14.0, -4.0)
 BAR = (9.0, 14.0)
-SCORE = (6.5, 9.5)
+# Табло стоит у дома, лицом во двор: играют в центре участка, и счёт
+# должен читаться оттуда, а не из дальнего угла.
+SCORE = (-13.0, 13.5)
+SCORE_FACE = 54.0                       # градусов; куда развёрнут экран
 HAMMOCK = ((-27.0, -2.0), (-27.0, -8.5))
 
 # circles the scatter must stay out of: every station, plus hand-placed props
@@ -1946,28 +1950,49 @@ def build_dressing():
     dup(pallet, (bx + 2.4, by + 0.6, 0.05), rot=(0, 0, math.radians(20)))
     dup(crate, (bx + 2.5, by + 0.5, 0.32), rot=(0, 0, math.radians(15)))
 
-    # ---------- scoreboard ----------
+    # ---------- табло: телевизор на двух балках ----------
+    #
+    # Раньше это была доска с кубиками-строчками, и стойки под неё ставились
+    # поперёк - вдоль нормали вместо ширины, - поэтому доска висела в воздухе
+    # мимо опор. Теперь корпус стоит на перекладине между балками, а счёт
+    # рисует Unity прямо на экране: живой счёт на кубиках не покажешь.
     sx2, sy2 = SCORE
-    face = math.radians(-24)
+    face = math.radians(SCORE_FACE)
+    dirx = (math.cos(face), math.sin(face))          # вдоль экрана
+    front = (math.sin(face), -math.cos(face))        # куда экран смотрит
+
+    SB_W, SB_H, SB_D = 3.2, 1.9, 0.20                # корпус
+    SB_BOT = 1.85                                    # низ корпуса над землёй
+    BEZ = 0.13                                       # ширина рамки
+
+    stand = SB_BOT - 0.18
     for s in (-1, 1):
-        obj_from(bm_box(0.20, 0.20, 3.0, 0.04), "ScorePost", mat['wood'],
-                 loc=(sx2 + math.cos(face + math.pi / 2) * s * 1.5,
-                      sy2 + math.sin(face + math.pi / 2) * s * 1.5, 1.5))
-    obj_from(bm_box(3.3, 0.16, 1.9, 0.06), "ScoreBoard", mat['black'],
-             loc=(sx2, sy2, 2.35), rot=(0, 0, face))
-    obj_from(bm_box(3.5, 0.10, 0.22, 0.04), "ScoreTitle", mat['red'],
-             loc=(sx2 - math.sin(face) * -0.10, sy2 + math.cos(face) * -0.10, 3.14),
-             rot=(0, 0, face))
-    for r in range(4):                                   # name plates + score chips
-        for c2 in range(2):
-            w = 1.25 if c2 == 0 else 0.42
-            ox = -0.85 + c2 * 1.30
-            oy = 0.62 - r * 0.40
-            obj_from(bm_box(w, 0.06, 0.24, 0.02), "ScoreRow",
-                     [mat['white'], mat['yellow']][c2],
-                     loc=(sx2 + ox * math.cos(face) - 0.10 * -math.sin(face),
-                          sy2 + ox * math.sin(face) - 0.10 * math.cos(face),
-                          2.35 + oy), rot=(0, 0, face))
+        obj_from(bm_box(0.22, 0.22, stand, 0.04), "ScorePost", mat['wood'],
+                 loc=(sx2 + dirx[0] * s * (SB_W * 0.5 - 0.2),
+                      sy2 + dirx[1] * s * (SB_W * 0.5 - 0.2), stand * 0.5),
+                 rot=(0, 0, face))
+    obj_from(bm_box(SB_W, 0.22, 0.20, 0.03), "ScoreBeam", mat['wood'],
+             loc=(sx2, sy2, stand + 0.10), rot=(0, 0, face))
+
+    obj_from(bm_box(SB_W, SB_D, SB_H, 0.06), "ScoreFrame", mat['metal_d'],
+             loc=(sx2, sy2, SB_BOT + SB_H * 0.5), rot=(0, 0, face))
+
+    # Экран отдельным объектом: на нём Unity строит счёт. Утоплен в корпус,
+    # поэтому рамка читается как рамка, а не как кайма на картинке.
+    off = SB_D * 0.5 + 0.012
+    obj_from(bm_box(SB_W - BEZ * 2, 0.03, SB_H - BEZ * 2, 0.0), "ScoreScreen",
+             mat['screen'],
+             loc=(sx2 + front[0] * off, sy2 + front[1] * off, SB_BOT + SB_H * 0.5),
+             rot=(0, 0, face), smooth=False)
+
+    # Метка направления. Unity узнаёт, куда смотрит экран, по ней, а не по
+    # осям объекта: на угадывании осей мы уже обожглись с колесом фортуны.
+    smark = bpy.data.objects.new("ScoreFront", None)
+    smark.empty_display_size = 0.3
+    bpy.context.collection.objects.link(smark)
+    smark.location = (sx2 + front[0] * (off + 1.0),
+                      sy2 + front[1] * (off + 1.0),
+                      SB_BOT + SB_H * 0.5)
 
     # ---------- hammock between two planted trees ----------
     trunk2 = obj_from(bm_cyl(0.42, 0.30, 3.6, 12, 0.06), "HamTrunk", mat['bark'],

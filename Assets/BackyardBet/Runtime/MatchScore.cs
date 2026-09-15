@@ -64,6 +64,15 @@ namespace BackyardBet
             return -1;
         }
 
+        /// <summary>Сколько игроков в зачёте - для табло во дворе.</summary>
+        public int RowCount => _scores.Count;
+
+        /// <summary>Строка зачёта по порядку. Для табло во дворе.</summary>
+        public PlayerScore Row(int i) => _scores[i];
+
+        /// <summary>Последнее событие - его же показывает табло.</summary>
+        public string LastEvent => _lastEvent.Value.ToString();
+
         public int ScoreOf(ulong clientId)
         {
             int i = IndexOf(clientId);

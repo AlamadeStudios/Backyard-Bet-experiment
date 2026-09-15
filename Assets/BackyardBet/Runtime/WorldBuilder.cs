@@ -163,6 +163,14 @@ namespace BackyardBet
                     continue;
                 }
 
+                // --- экран табло: на нём рисуется живой счёт двора
+                if (n == "ScoreScreen")
+                {
+                    if (go.GetComponent<ScoreScreenBoard>() == null)
+                        go.AddComponent<ScoreScreenBoard>();
+                    continue;
+                }
+
                 // --- стакан с костями: трясётся в начале раунда
                 if (Matches(n, "DiceCup"))
                 {
