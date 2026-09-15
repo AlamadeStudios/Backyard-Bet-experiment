@@ -62,17 +62,33 @@ namespace BackyardBet
             // рогатка: сама рогатка, снаряды и стеллаж с банками
             "SlingFork", "SlingPost", "Band", "Pouch", "Pellet", "CanRack", "Can",
 
-            // бильярд: стол, лузы, шар, кий и пергола над ними
+            // бильярд: стол, лузы, пятнадцать шаров, кий и пергола над ними
             "PoolFelt", "PoolFrame", "PoolLeg", "PoolRails", "Pocket",
-            "CueBall", "CueStick", "Pergola", "PergPost",
+            "CueBall", "CueStick", "Ball", "Pergola", "PergPost",
 
             // боулинг: дорожка, жёлоба, кегли и шар. Само помещение остаётся
             "Lane", "Gutter", "Approach", "Pin", "PinBand", "BallReturn", "BowlBall",
 
             // лавка перед домом - столешница с двумя лавками - и тент над
-            // ней: четыре стойки с крышей стоят прямо напротив фасада.
+            // ней: четыре стойки с крышей стоят прямо напротив фасада, а
+            // арбуз лежал на столешнице и без неё повис бы в воздухе.
             // Палатка в дальнем углу двора к этому не относится и остаётся
-            "PicnicTable", "TentRoof", "TentPost",
+            "PicnicTable", "TentRoof", "TentPost", "Watermelon",
+        };
+
+        /// <summary>
+        /// Что убрано не по имени, а по месту.
+        ///
+        /// Бетонные площадки под забавами называются одинаково - Apron, - и
+        /// по одному имени вместе с бильярдной убралась бы площадка дартса и
+        /// метания топора. Координаты сняты с самой карты и заданы
+        /// относительно корня Map, чтобы не зависеть от того, где он стоит.
+        /// </summary>
+        static readonly (string name, Vector2 at, float radius)[] HiddenSpots =
+        {
+            ("Apron", new Vector2(-18f, -10f), 5f),   // под бильярдом
+            ("Apron", new Vector2(-10f,  12f), 5f),   // под бир-понгом
+            ("Apron", new Vector2( -6f,  22f), 5f),   // под рогаткой
         };
 
         bool _built;
@@ -210,13 +226,25 @@ namespace BackyardBet
             {
                 if (!t.gameObject.activeSelf) continue;
 
+                bool off = false;
                 foreach (var name in Hidden)
+                    if (Matches(t.name, name)) { off = true; break; }
+
+                if (!off)
                 {
-                    if (!Matches(t.name, name)) continue;
-                    t.gameObject.SetActive(false);
-                    hidden++;
-                    break;
+                    var p = map.transform.InverseTransformPoint(t.position);
+                    foreach (var (name, at, radius) in HiddenSpots)
+                    {
+                        if (!Matches(t.name, name)) continue;
+                        if (Vector2.Distance(new Vector2(p.x, p.z), at) > radius) continue;
+                        off = true;
+                        break;
+                    }
                 }
+
+                if (!off) continue;
+                t.gameObject.SetActive(false);
+                hidden++;
             }
             return hidden;
         }
