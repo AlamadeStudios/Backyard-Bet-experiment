@@ -30,6 +30,7 @@ namespace BackyardBet
             ("Bottle",    0.350f),
             ("Potato",    0.180f),
             ("Patty",     0.120f),
+            ("Stone",     0.900f),
         };
 
         // HOU_FrontDoor - дверь дома из генератора: у неё есть родитель-петля
@@ -184,6 +185,14 @@ namespace BackyardBet
                 {
                     if (go.GetComponent<FortuneWheelHandle>() == null)
                         go.AddComponent<FortuneWheelHandle>();
+                    continue;
+                }
+
+                // --- мангал: на решётке жарятся котлеты
+                if (n == "Grill")
+                {
+                    if (go.GetComponent<GrillStation>() == null)
+                        go.AddComponent<GrillStation>();
                     continue;
                 }
 

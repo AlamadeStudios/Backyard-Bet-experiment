@@ -156,6 +156,50 @@ def bm_blobs(blobs, lumpy=0.0, nscale=1.0, seed=0, subdiv=3):
             v.co += v.co.normalized() * (noise.noise(v.co * nscale + o) * lumpy)
     return bm
 
+def bm_flower():
+    """Цветок: стебель с листом, пять лепестков и сердцевина.
+
+    Раньше это были две цветные капли одна на другой - издали пятно, вблизи
+    комок. Материалы идут тремя слотами: зелень, лепестки, сердцевина, -
+    иначе цветок не читается как цветок.
+    """
+    bm = bmesh.new()
+
+    def tag(seen, mi):
+        """Пометить материалом всё, что появилось с прошлого вызова."""
+        cur = set(bm.faces)
+        for f in cur - seen:
+            f.material_index = mi
+        return cur
+
+    seen = set()
+
+    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=6,
+                          radius1=0.013, radius2=0.010, depth=0.34,
+                          matrix=Matrix.Translation((0, 0, 0.17)))
+    for sl in (-1, 1):
+        bmesh.ops.create_icosphere(
+            bm, subdivisions=1, radius=0.05,
+            matrix=Matrix.Translation((sl * 0.055, 0, 0.12))
+            @ Matrix.Rotation(sl * 0.5, 4, 'Z')
+            @ Matrix.Diagonal((1.6, 0.55, 0.16, 1.0)))
+    seen = tag(seen, 0)
+
+    for i in range(5):
+        a = i * TAU / 5
+        bmesh.ops.create_icosphere(
+            bm, subdivisions=1, radius=0.052,
+            matrix=Matrix.Translation((math.cos(a) * 0.072, math.sin(a) * 0.072, 0.345))
+            @ Matrix.Rotation(a, 4, 'Z')
+            @ Matrix.Diagonal((1.7, 0.85, 0.3, 1.0)))
+    seen = tag(seen, 1)
+
+    bmesh.ops.create_icosphere(
+        bm, subdivisions=2, radius=0.042,
+        matrix=Matrix.Translation((0, 0, 0.362)) @ Matrix.Diagonal((1, 1, 0.68, 1.0)))
+    tag(seen, 2)
+    return bm
+
 def bm_shift(bm, d):
     for v in bm.verts:
         v.co.x += d[0]; v.co.y += d[1]; v.co.z += d[2]
@@ -1650,6 +1694,19 @@ def build_decor():
                        ((0.14, 0.14, 0.9), (0.6, -0.35, 0.0)),
                        ((0.14, 0.14, 0.9), (0.0, 0.4, 0.0))], 0.05),
              "Grill", mat['metal_d'], loc=(gx, gy, 0.45))
+    # Приставной столик с котлетами: без сырья мангал - просто декорация,
+    # а так его можно растопить и пожарить. Котлеты подбираются как реквизит.
+    obj_from(bm_boxes([((1.20, 0.75, 0.08), (0, 0, 0.86)),
+                       ((0.10, 0.10, 0.86), (-0.52, -0.30, 0.43)),
+                       ((0.10, 0.10, 0.86), (0.52, -0.30, 0.43)),
+                       ((0.10, 0.10, 0.86), (-0.52, 0.30, 0.43)),
+                       ((0.10, 0.10, 0.86), (0.52, 0.30, 0.43))], 0.03),
+             "PattyTable", mat['wood_l'], loc=(gx, gy - 1.8, 0.0))
+    for i in range(4):
+        obj_from(bm_cyl(0.085, 0.085, 0.045, 14, 0.012), "Patty", mat['maroon'],
+                 loc=(gx - 0.42 + (i % 2) * 0.84, gy - 1.98 + (i // 2) * 0.36, 0.945),
+                 smooth=True, angle=50)
+
     RIG['grill_smoke'] = []
     for i in range(4):
         m2 = M("GrillSmoke%d" % i, (0.85, 0.85, 0.88), 1.0, spec=0.05, alpha=0.35)
@@ -1891,10 +1948,10 @@ def build_dressing():
                        loc=(0, 0, -200), angle=180) for i in range(3)]
     rock = obj_from(bm_blobs([(0.42, (0, 0, 0), 0.66)], 0.28, 2.4, 12, 3), "DRock",
                     mat['stone'], loc=(0, 0, -200), smooth=True, angle=50)
-    flowers = [obj_from(bm_blobs([(0.10, (0, 0, 0), 0.7), (0.05, (0, 0, 0.06), 1.0)],
-                                 0, 1, 0, 2), "DFlower%d" % i, m,
+    flowers = [obj_from(bm_flower(), "DFlower%d" % i,
+                        [mat['leafB'], m, mat['yellow']],
                         loc=(0, 0, -200), angle=180)
-               for i, m in enumerate([mat['red'], mat['yellow'], mat['white'],
+               for i, m in enumerate([mat['red'], mat['shirtC'], mat['white'],
                                       mat['purple']])]
 
     # ---------- station aprons: gravel pads, bales, marker lines ----------
@@ -2107,26 +2164,21 @@ def build_dressing():
                       base[1] + math.sin(ang) * 0.42, 2.35 - (i % 2) * 0.46),
                  rot=(0, 0, ang), smooth=False)
 
-    # ---------- party litter around the social spots ----------
-    litter = [cup, cup, cup, can, can2, btl, plate]
-    PARTY = [(TBL[0], TBL[1], 2.6, 6.5), (FIRE[0], FIRE[1], 3.4, 6.5),
-             (BAR[0], BAR[1], 2.4, 5.0), (BP[0], BP[1], 2.6, 5.5),
-             (PPOOL[0], PPOOL[1] + PPOOL_R + 1.0, 1.0, 3.5)]
-    placed_litter = 0
-    tries = 0
-    while placed_litter < 74 and tries < 4000:
-        tries += 1
-        px2, py2, r0, r1 = random.choice(PARTY)
-        a = random.uniform(0, TAU)
-        r = random.uniform(r0, r1)
-        x, y = px2 + math.cos(a) * r, py2 + math.sin(a) * r
-        if not spot_free(x, y, -1.4): continue
-        p = random.choice(litter)
-        tipped = random.random() < 0.45
-        dup(p, (x, y, 0.05 if tipped else 0.10),
-            rot=(math.radians(90) if tipped else 0, 0, random.uniform(0, TAU)),
-            scale=random.uniform(0.9, 1.1), angle=50)
-        placed_litter += 1
+    # Мусор под ногами убран. Семьдесят четыре стакана, банки и бутылки,
+    # раскиданные по газону, читались не как следы вечеринки, а как грязь,
+    # и путались под ногами при каждом шаге. Посуда на барной стойке и у
+    # мангала осталась - там она на своём месте.
+
+    # ---------- камни для броска ----------
+    # Метать во дворе было нечем, кроме посуды. Эти лежат горкой у костра -
+    # видно, что они для того и лежат, а не декорация под ногами.
+    for i in range(6):
+        a = i * TAU / 6.0
+        obj_from(bm_blobs([(0.11, (0, 0, 0), 0.78)], 0.22, 2.6, 70 + i, 2), "Stone",
+                 mat['stone'],
+                 loc=(FIRE[0] + 2.6 + math.cos(a) * 0.45,
+                      FIRE[1] - 2.4 + math.sin(a) * 0.45, 0.11),
+                 rot=(0, 0, a), smooth=True, angle=50)
 
     # ---------- canopy tent with a picnic table under it ----------
     tcx, tcy = -8.0, 9.0
@@ -2205,7 +2257,7 @@ def build_dressing():
             n += 1
     scatter(lambda: random.choice(bushes), 56, 1.2, lambda: 0.48, (0.6, 1.15))
     scatter(lambda: tuft, 210, -0.5, lambda: 0.20, (0.7, 1.5), angle=60)
-    scatter(lambda: random.choice(flowers), 96, -0.3, lambda: 0.10, (0.8, 1.6))
+    scatter(lambda: random.choice(flowers), 96, -0.3, lambda: 0.0, (0.8, 1.6))
     scatter(lambda: rock, 34, 0.6, lambda: 0.12, (0.5, 1.2), angle=50)
     # dense planting hugging the fence line
     for i in range(64):

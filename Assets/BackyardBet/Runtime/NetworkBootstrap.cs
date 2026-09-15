@@ -245,66 +245,144 @@ namespace BackyardBet
         static ushort ParsePort(string s) =>
             ushort.TryParse(s.Trim(), out ushort p) && p > 0 ? p : BasePort;
 
+        static Texture2D _fade;
+
+        /// <summary>Заливка на весь экран - фон меню и его подложки.</summary>
+        static Texture2D Fill
+        {
+            get
+            {
+                if (_fade == null)
+                {
+                    _fade = new Texture2D(1, 1) { hideFlags = HideFlags.DontSave };
+                    _fade.SetPixel(0, 0, Color.white);
+                    _fade.Apply();
+                }
+                return _fade;
+            }
+        }
+
+        static void Box(Rect r, Color c)
+        {
+            var old = GUI.color;
+            GUI.color = c;
+            GUI.DrawTexture(r, Fill);
+            GUI.color = old;
+        }
+
+        static void Shadowed(Rect r, string text, GUIStyle style, Color color)
+        {
+            var was = style.normal.textColor;
+            style.normal.textColor = new Color(0f, 0f, 0f, 0.6f);
+            GUI.Label(new Rect(r.x + 2f, r.y + 3f, r.width, r.height), text, style);
+            style.normal.textColor = color;
+            GUI.Label(r, text, style);
+            style.normal.textColor = was;
+        }
+
+        /// <summary>
+        /// Главное меню на весь экран.
+        ///
+        /// Раньше это была панель на 420 пикселей посреди пустоты - вид
+        /// отладочного окна, а не игры. Здесь затемнённый двор на фоне,
+        /// крупное имя, кнопки в столбик и подсказка по управлению внизу:
+        /// новый игрок должен понимать, что нажимать, не спрашивая.
+        /// </summary>
         void DrawMenu()
         {
-            float w = 420f, h = 350f;
-            float x = (Screen.width - w) * 0.5f;
-            float y = (Screen.height - h) * 0.5f;
+            float sw = Screen.width, sh = Screen.height;
 
-            GUI.DrawTexture(new Rect(x, y, w, h), PanelTexture());
+            // Двор виден сквозь затемнение - он и есть лучшая заставка,
+            // которая у нас уже нарисована.
+            Box(new Rect(0f, 0f, sw, sh), new Color(0.04f, 0.05f, 0.09f, 0.72f));
+
+            float w = Mathf.Min(520f, sw - 40f);
+            float x = (sw - w) * 0.5f;
+            float y = Mathf.Max(30f, sh * 0.5f - 250f);
 
             var title = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 34,
+                fontSize = 52,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter
             };
-            title.normal.textColor = new Color(1f, 0.84f, 0.35f);
-            GUI.Label(new Rect(x, y + 18f, w, 44f), "BACKYARD BET", title);
+            // лёгкое дыхание: неподвижный заголовок выглядит как картинка
+            float pulse = 1f + Mathf.Sin(Time.realtimeSinceStartup * 1.6f) * 0.06f;
+            Shadowed(new Rect(x, y, w, 62f), "BACKYARD BET", title,
+                     new Color(1f, 0.8f + 0.06f * pulse, 0.3f));
 
             var sub = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 13,
-                alignment = TextAnchor.MiddleCenter,
-                wordWrap = true
-            };
-            sub.normal.textColor = new Color(0.78f, 0.78f, 0.80f);
-            GUI.Label(new Rect(x + 24f, y + 60f, w - 48f, 20f),
-                      "Пьяные игры на вылет · до 4 игроков", sub);
+            { fontSize = 15, alignment = TextAnchor.MiddleCenter, wordWrap = true };
+            sub.normal.textColor = new Color(0.82f, 0.82f, 0.86f);
+            GUI.Label(new Rect(x, y + 64f, w, 24f),
+                      "Пьяные дворовые игры на вылет  ·  до 4 игроков", sub);
 
-            var btn = new GUIStyle(GUI.skin.button) { fontSize = 15 };
-            float bx = x + 40f, bw = w - 80f;
+            var btn = new GUIStyle(GUI.skin.button)
+            { fontSize = 18, fontStyle = FontStyle.Bold };
+            var small = new GUIStyle(GUI.skin.button) { fontSize = 14 };
+            var hint = new GUIStyle(GUI.skin.label)
+            { fontSize = 12, alignment = TextAnchor.MiddleLeft };
+            hint.normal.textColor = new Color(0.62f, 0.64f, 0.70f);
 
-            // Локальный режим не требует Unity Services и Cloud Project ID -
-            // поэтому он идёт первым: с него игра запускается всегда.
-            GUI.Label(new Rect(bx, y + 92f, bw, 18f),
-                      "Играть на этой машине (порт подбирается сам):", sub);
-            if (GUI.Button(new Rect(bx, y + 112f, bw * 0.48f, 34f), "Хост", btn))
+            float bx = x + 60f, bw = w - 120f, by = y + 108f;
+
+            // Локальная игра первой: она не требует ни интернета, ни Unity
+            // Services, поэтому с неё игра запускается всегда.
+            if (GUI.Button(new Rect(bx, by, bw, 46f), "ИГРАТЬ ВО ДВОРЕ", btn))
                 StartLocalHost();
-            if (GUI.Button(new Rect(bx + bw * 0.52f, y + 112f, bw * 0.48f, 34f), "Клиент", btn))
-                StartLocalClient(ParsePort(_portField));
+            GUI.Label(new Rect(bx, by + 48f, bw, 18f),
+                      "одиночная игра с ботами, порт подбирается сам", hint);
 
-            // порт нужен второму окну на этой же машине: хост показывает свой,
-            // клиент вводит его сюда
-            GUI.Label(new Rect(bx, y + 150f, bw * 0.44f, 20f), "Порт клиента:", sub);
-            _portField = GUI.TextField(new Rect(bx + bw * 0.46f, y + 148f, bw * 0.22f, 22f),
-                                       _portField);
-
-            GUI.Label(new Rect(bx, y + 176f, bw, 18f), "Играть с друзьями по сети:", sub);
+            by += 78f;
             GUI.enabled = !_busy && _ready;
-            if (GUI.Button(new Rect(bx, y + 196f, bw, 30f), "Создать комнату", btn))
+            if (GUI.Button(new Rect(bx, by, bw, 40f), "СОЗДАТЬ КОМНАТУ", btn))
                 HostGame();
-
-            _codeField = GUI.TextField(new Rect(bx, y + 232f, bw * 0.46f, 28f), _codeField);
-            if (GUI.Button(new Rect(bx + bw * 0.5f, y + 232f, bw * 0.5f, 28f), "Войти по коду", btn))
+            by += 46f;
+            _codeField = GUI.TextField(new Rect(bx, by, bw * 0.52f, 34f), _codeField);
+            if (GUI.Button(new Rect(bx + bw * 0.56f, by, bw * 0.44f, 34f),
+                           "Войти по коду", small))
                 JoinGame(_codeField.Trim().ToUpperInvariant());
             GUI.enabled = true;
 
+            by += 46f;
+            GUI.Label(new Rect(bx, by, bw * 0.52f, 22f), "второе окно на этой машине:", hint);
+            _portField = GUI.TextField(new Rect(bx + bw * 0.56f, by, bw * 0.18f, 22f),
+                                       _portField);
+            if (GUI.Button(new Rect(bx + bw * 0.78f, by, bw * 0.22f, 22f), "Клиент", small))
+                StartLocalClient(ParsePort(_portField));
+
+            by += 40f;
+            if (GUI.Button(new Rect(bx + bw * 0.3f, by, bw * 0.4f, 30f), "Выход", small))
+                Quit();
+
+            // ---- управление и состояние
+            by += 46f;
+            Box(new Rect(x, by, w, 74f), new Color(0f, 0f, 0f, 0.35f));
+            var keys = new GUIStyle(GUI.skin.label)
+            { fontSize = 13, alignment = TextAnchor.UpperCenter, wordWrap = true };
+            keys.normal.textColor = new Color(0.80f, 0.82f, 0.88f);
+            GUI.Label(new Rect(x + 16f, by + 8f, w - 32f, 20f),
+                      "WASD — идти   ·   Space — прыжок   ·   E — взять или открыть", keys);
+            GUI.Label(new Rect(x + 16f, by + 28f, w - 32f, 20f),
+                      "ЛКМ удерживать — замах и бросок   ·   R — отпить из бутылки", keys);
+            GUI.Label(new Rect(x + 16f, by + 48f, w - 32f, 20f),
+                      "Esc — встать из-за стола и освободить курсор", keys);
+
             var st = new GUIStyle(GUI.skin.label)
             { fontSize = 12, wordWrap = true, alignment = TextAnchor.UpperCenter };
-            st.normal.textColor = _ready ? new Color(0.72f, 0.85f, 0.72f)
-                                         : new Color(0.92f, 0.72f, 0.55f);
-            GUI.Label(new Rect(x + 24f, y + 268f, w - 48f, 66f), _status, st);
+            st.normal.textColor = _ready ? new Color(0.72f, 0.88f, 0.74f)
+                                         : new Color(0.94f, 0.76f, 0.56f);
+            GUI.Label(new Rect(x, by + 80f, w, 52f), _status, st);
+        }
+
+        /// <summary>Выйти из игры. В редакторе - остановить проигрывание.</summary>
+        static void Quit()
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
         }
     }
 }

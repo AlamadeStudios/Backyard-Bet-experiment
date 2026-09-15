@@ -34,6 +34,7 @@ namespace BackyardBet
         string _prompt;
         float _charge;                 // сколько держим кнопку броска, с
         bool _charging;
+        Tipsy _tipsy;
         PlayerSeating _seating;
         readonly RaycastHit[] _hits = new RaycastHit[12];
 
@@ -64,7 +65,27 @@ namespace BackyardBet
             ScanForTarget();
 
             if (Input.GetKeyDown(KeyCode.E) && _target != null) SendInteract();
+            if (Input.GetKeyDown(KeyCode.R)) Drink();
             Charge();
+        }
+
+        /// <summary>
+        /// Глоток из бутылки, если она в руке.
+        ///
+        /// Выпивка тут не цифра в углу экрана, а помеха: после глотка камеру
+        /// ведёт, и целиться становится труднее. Проверяем предмет в руке по
+        /// его же объекту, а не по названию в интерфейсе.
+        /// </summary>
+        void Drink()
+        {
+            if (HeldProp < 0 || PropNetwork.Instance == null) return;
+
+            var prop = PropNetwork.Instance.Prop(HeldProp);
+            if (prop == null || !prop.name.StartsWith("Bottle")) return;
+
+            if (_tipsy == null) _tipsy = GetComponent<Tipsy>();
+            if (_tipsy == null) _tipsy = gameObject.AddComponent<Tipsy>();
+            _tipsy.Sip();
         }
 
         /// <summary>
@@ -142,6 +163,17 @@ namespace BackyardBet
                     break;
                 case FortuneWheelHandle _:
                     SpinWheelServerRpc();
+                    break;
+                case GrillStation grill:
+                    // Кладём тем же путём, что и бросаем: хост уже умеет
+                    // проверять, что предмет действительно в руке у этого
+                    // игрока, и заводить под мангал отдельную ветку незачем.
+                    if (HeldProp >= 0)
+                    {
+                        Vector3 to = grill.GrateSpot - (aim != null ? aim.position
+                                                                    : transform.position);
+                        ThrowServerRpc(HeldProp, to.normalized, 0.1f);
+                    }
                     break;
             }
         }
@@ -230,10 +262,17 @@ namespace BackyardBet
 
             if (HeldProp >= 0)
             {
-                Label(new Rect(cx - 300f, Screen.height - 150f, 600f, 30f),
-                      "ЛКМ (удерживай) — бросить");
+                string hint = "ЛКМ (удерживай) — бросить";
+                var prop = PropNetwork.Instance != null
+                    ? PropNetwork.Instance.Prop(HeldProp) : null;
+                if (prop != null && prop.name.StartsWith("Bottle"))
+                    hint += "   ·   R — отпить";
+
+                Label(new Rect(cx - 300f, Screen.height - 150f, 600f, 30f), hint);
                 DrawCharge(cx, cy);
             }
+
+            DrawTipsy();
 
             if (!string.IsNullOrEmpty(_prompt))
                 Label(new Rect(cx - 300f, Screen.height - 120f, 600f, 40f), _prompt);
@@ -259,6 +298,23 @@ namespace BackyardBet
                                    new Color(1f, 0.32f, 0.12f), k);
             GUI.DrawTexture(new Rect(back.x + 2f, back.y + 2f,
                                      (w - 4f) * k, h - 4f), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+        }
+
+        /// <summary>
+        /// Хмель по краям кадра. Затемнение по периметру честнее цифры: оно
+        /// мешает так же, как мешает выпивка, и не просит на себя смотреть.
+        /// </summary>
+        void DrawTipsy()
+        {
+            if (_tipsy == null || _tipsy.Level <= 0.02f) return;
+
+            float a = _tipsy.Level * 0.32f;
+            float band = Screen.height * 0.16f * _tipsy.Level;
+            GUI.color = new Color(0.05f, 0.02f, 0.06f, a);
+            GUI.DrawTexture(new Rect(0f, 0f, Screen.width, band), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(0f, Screen.height - band, Screen.width, band),
+                            Texture2D.whiteTexture);
             GUI.color = Color.white;
         }
 
