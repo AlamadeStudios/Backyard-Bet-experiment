@@ -37,10 +37,19 @@ namespace BackyardBet
         readonly NetworkVariable<Unity.Collections.FixedString128Bytes> _lastEvent =
             new NetworkVariable<Unity.Collections.FixedString128Bytes>();
 
+        [Tooltip("Сколько секунд висит сообщение о начислении, с.")]
+        public float eventSeconds = 4f;
+
+        float _eventAt = -99f;         // когда пришло последнее событие
+
         void Awake() => Instance = this;
 
         public override void OnNetworkSpawn()
         {
+            // Сообщение живёт несколько секунд и гаснет. Раньше оно висело до
+            // следующего события, то есть почти всегда, и закрывало собой двор.
+            _lastEvent.OnValueChanged += (_, __) => _eventAt = Time.time;
+
             if (!IsServer) return;
             NetworkManager.OnClientConnectedCallback += EnsureRow;
             foreach (var id in NetworkManager.ConnectedClientsIds) EnsureRow(id);
@@ -139,13 +148,19 @@ namespace BackyardBet
             string ev = _lastEvent.Value.ToString();
             if (string.IsNullOrEmpty(ev)) return;
 
+            float age = Time.time - _eventAt;
+            if (age > eventSeconds) return;
+
+            // последнюю секунду гасим: резкое исчезновение читается как сбой
+            float fade = Mathf.Clamp01(eventSeconds - age);
+
             var big = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 24,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter
             };
-            big.normal.textColor = new Color(1f, 0.92f, 0.7f);
+            big.normal.textColor = new Color(1f, 0.92f, 0.7f, fade);
             GUI.Label(new Rect(Screen.width * 0.5f - 300f, 60f, 600f, 40f), ev, big);
         }
     }

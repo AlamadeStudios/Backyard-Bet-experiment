@@ -225,11 +225,18 @@ namespace BackyardBet
             var nm = NetworkManager.Singleton;
             bool live = nm != null && (nm.IsHost || nm.IsClient);
 
-            if (live) { DrawInGameBar(nm); return; }
+            // В игре на экране не должно быть служебных строк: порт и число
+            // игроков нужны, когда игрок остановился и отпустил курсор, а не
+            // когда он бежит по двору. Показываем их только в этот момент.
+            if (live)
+            {
+                if (Cursor.lockState != CursorLockMode.Locked) DrawInGameBar(nm);
+                return;
+            }
             DrawMenu();
         }
 
-        /// <summary>В игре нужна одна строка в углу, а не панель на пол-экрана.</summary>
+        /// <summary>Служебная строка на паузе: порт для второго окна и счётчик игроков.</summary>
         void DrawInGameBar(NetworkManager nm)
         {
             var s = new GUIStyle(GUI.skin.label) { fontSize = 14, wordWrap = true };
