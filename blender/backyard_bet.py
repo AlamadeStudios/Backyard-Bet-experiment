@@ -5,7 +5,7 @@ BACKYARD BET - full procedural scene + animation set for the party game.
 Builds, in one pass:
   * a 76x76 m fenced backyard with a cottage and an attached bowling annex
   * every mini-game rig: bluff table, darts, billiards, beer pong,
-    axe throwing, slingshot cans, bowling lane, potato cannon, piranha pool
+    axe throwing, slingshot cans, bowling lane, piranha pool
   * four cartoon characters with swingable arms
   * nine animated segments (1090 frames @ 30 fps) with bound cameras
 
@@ -384,7 +384,6 @@ def build_mats():
     mat['screen'] = M("Screen", (0.04, 0.05, 0.07), 0.22, spec=0.7)
     mat['flame'] = M("Flame", (1.0, 0.55, 0.12), 0.4, emit=(1.0, 0.38, 0.05, 0.9))
     mat['smoke'] = M("Smoke", (0.86, 0.86, 0.88), 1.0, spec=0.05, alpha=0.55)
-    mat['potato'] = M("Potato", (0.76, 0.62, 0.38), 0.90)
     mat['beer'] = M("Beer", (0.62, 0.36, 0.06), 0.25, spec=0.8, alpha=0.75)
 
 # ============================================================ terrain & fence
@@ -1433,41 +1432,13 @@ def build_bowling():
     # ---------- score digits on the neon screen ----------
     stamp_text("12:08", LANE_X1 + 1.24, LANE_Y, 2.30, px=0.09, gap=0.035)
 
-# ============================================================ 8. cannon + pool
-CANNON = (14.0, -28.0, 1.35)
-# Бассейн стоял в двух метрах от ворот и ровно напротив них: войдя во
-# двор, игрок упирался в борт. Сдвинут влево от дорожки - до ворот теперь
-# почти десять метров свободного прохода, а тропинка к дому не задета.
-PPOOL = (-13.0, -29.0)
+# ============================================================ 8. piranha pool
+# Бассейн стоял в двух метрах от ворот и ровно напротив них: войдя во двор,
+# игрок упирался в борт. Теперь он занял место картофельной пушки в дальнем
+# правом углу - от ворот до его борта одиннадцать метров, и тропинка к дому
+# проходит стороной.
+PPOOL = (14.0, -28.0)
 PPOOL_R = 5.5
-
-def build_cannon():
-    cx, cy, cz = CANNON
-    bm = bm_cyls([(0.30, 0.30, 1.10, (0, 0, -0.75), 20),
-                  (0.34, 0.34, 0.16, (0, 0, -0.14), 20),
-                  (0.17, 0.17, 2.60, (0, 0, 1.25), 20),
-                  (0.22, 0.22, 0.16, (0, 0, 2.50), 20)], 0.03)
-    bm_rotate(bm, math.radians(90), 'Y')       # barrel along +x
-    cannon = obj_from(bm, "PotatoCannon", mat['metal_d'],
-                      loc=(cx, cy, cz), rot=(0, 0, math.radians(196)),
-                      smooth=True, angle=50)
-    RIG['cannon'] = cannon
-    RIG['cannon_home'] = (cx, cy, cz)
-    obj_from(bm_boxes([((0.22, 0.22, 1.5), (0.5, 0.4, -0.75)),
-                       ((0.22, 0.22, 1.5), (0.5, -0.4, -0.75)),
-                       ((0.22, 0.22, 1.5), (-0.6, 0.0, -0.75))], 0.04),
-             "CannonLegs", mat['wood'], loc=(cx, cy, cz))
-    RIG['potato'] = obj_from(bm_blobs([(0.16, (0, 0, 0), 0.78)], 0.20, 3.0, 5, 3),
-                             "Potato", mat['potato'],
-                             loc=(cx - 2.4, cy - 0.7, cz + 0.05), angle=180)
-    RIG['potato'].rotation_mode = 'QUATERNION'
-    sm = M("SmokePuff", (0.88, 0.88, 0.90), 1.0, spec=0.05, alpha=0.0)
-    RIG['smoke_mat'] = sm
-    RIG['smoke'] = obj_from(bm_blobs([(0.5, (0, 0, 0), 0.8), (0.36, (0.5, 0.2, 0.1), 0.8),
-                                      (0.32, (-0.4, -0.3, 0.15), 0.8)], 0.15, 1.2, 3, 3),
-                            "MuzzleSmoke", sm,
-                            loc=(cx - 2.9, cy - 0.85, cz + 0.05),
-                            scale=0.2, angle=180)
 
 def build_piranha_pool():
     px, py = PPOOL
@@ -1755,8 +1726,7 @@ def build_decor():
                      mat['stone'], loc=(0, 0, -200), smooth=True, angle=45)
     # the path must not run through any game station
     KEEPOUT = [(TBL[0], TBL[1], 3.4), (PPOOL[0], PPOOL[1], PPOOL_R + 1.3),
-               (BP[0], BP[1], 3.2), (SLING[0], SLING[1], 2.6),
-               (CANNON[0], CANNON[1], 2.4)]
+               (BP[0], BP[1], 3.2), (SLING[0], SLING[1], 2.6)]
     yy = -FENCE + 1.0
     while yy < 15.0:
         t = (yy + FENCE) / 53.0
@@ -1838,7 +1808,6 @@ build_beerpong()
 build_axe()
 build_slingshot()
 build_bowling()
-build_cannon()
 build_piranha_pool()
 build_fortune_wheel()
 build_decor()
@@ -1858,7 +1827,7 @@ STATIONS = [
     (DART_BOARD[0], DART_BOARD[1], 2.6), (DART_LINE[0], DART_LINE[1], 2.2),
     (BP[0], BP[1], 3.6), (AXE_T[0], AXE_T[1], 2.6), (AXE_LINE[0], AXE_LINE[1], 2.2),
     (SLING[0], SLING[1], 2.8), (CANS[0], CANS[1], 3.2),
-    (PPOOL[0], PPOOL[1], PPOOL_R + 2.0), (CANNON[0], CANNON[1], 3.2),
+    (PPOOL[0], PPOOL[1], PPOOL_R + 2.0),
     (FIRE[0], FIRE[1], 4.0), (BAR[0], BAR[1], 3.4), (SCORE[0], SCORE[1], 2.2),
     (10.0, 10.0, 2.6),                                     # bbq grill
     (HAMMOCK[0][0], HAMMOCK[0][1], 2.0), (HAMMOCK[1][0], HAMMOCK[1][1], 2.0),
@@ -2101,8 +2070,11 @@ def build_dressing():
     obj_from(hb, "Hammock", mat['shirtB'], smooth=True, angle=80)
 
     # ---------- sun loungers by the pool ----------
-    for i, (lx, ly, lr) in enumerate(((-4.6, -27.0, 0.5), (-6.4, -24.4, 0.9),
-                                      (9.2, -31.4, -2.4))):
+    # Третий лежак стоит у бассейна и задан от него, а не числом: с
+    # переездом бассейна он однажды уже оказался внутри чаши.
+    for i, (lx, ly, lr) in enumerate(
+            ((-4.6, -27.0, 0.5), (-6.4, -24.4, 0.9),
+             (PPOOL[0] - PPOOL_R - 2.2, PPOOL[1] - 2.6, -2.4))):
         obj_from(bm_boxes([((1.9, 0.72, 0.10), (0, 0, 0)),
                            ((0.62, 0.72, 0.10), (1.05, 0, 0.26), 0),
                            ((0.10, 0.10, 0.36), (-0.8, 0.3, -0.23)),
@@ -2533,32 +2505,9 @@ for i, p in enumerate(RIG['pins']):
 f0, f1 = SEG['punish']
 VICT = (7.6, -27.4)
 snap_root(MIA, f0, (VICT[0], VICT[1], 0.0), face_dir(1.0, 0.4))
-snap_root(BO, f0, (CANNON[0] + 1.4, CANNON[1] + 1.2, 0.0), face_dir(-1, -0.3))
-aim = math.atan2(VICT[1] - CANNON[1], VICT[0] - CANNON[0])
-cannon = RIG['cannon']
-cannon.rotation_euler = (0, 0, aim)
-cx, cy, cz = RIG['cannon_home']
-muzzle = (cx + math.cos(aim) * 2.75, cy + math.sin(aim) * 2.75, cz + 0.05)
-key(cannon, f0 + 10, loc=(cx, cy, cz), rot=(0, 0, aim))
-key(cannon, f0 + 22, loc=(cx - math.cos(aim) * 0.55,
-                          cy - math.sin(aim) * 0.55, cz + 0.08), rot=(0, 0, aim))
-key(cannon, f0 + 46, loc=(cx, cy, cz), rot=(0, 0, aim))
-smoke, smat = RIG['smoke'], RIG['smoke_mat']
-key(smoke, f0 + 20, loc=muzzle, scale=0.25)
-key_alpha(smat, f0 + 20, 0.0)
-key_alpha(smat, f0 + 24, 0.85)
-key(smoke, f0 + 26, loc=(muzzle[0] + math.cos(aim) * 0.9,
-                         muzzle[1] + math.sin(aim) * 0.9, muzzle[2] + 0.35),
-    scale=1.5)
-key(smoke, f0 + 62, loc=(muzzle[0] + math.cos(aim) * 2.2,
-                         muzzle[1] + math.sin(aim) * 2.2, muzzle[2] + 1.5),
-    scale=3.4)
-key_alpha(smat, f0 + 62, 0.0)
-potato = RIG['potato']
-key(potato, f0 + 20, loc=muzzle, quat=Quaternion((1, 0, 0, 0)))
-ballistic(potato, f0 + 21, f0 + 41, muzzle, (VICT[0], VICT[1], 1.55), 0.35,
-          spin=((0.4, 0.6, 1.0), 3.0))
-key(potato, f0 + 52, loc=(VICT[0] - 0.9, VICT[1] + 0.5, 0.12))
+# Пушки во дворе больше нет, и наказание обходится без выстрела: Бо
+# подходит к проигравшему и сталкивает его в бассейн.
+snap_root(BO, f0, (VICT[0] + 1.7, VICT[1] + 1.3, 0.0), face_dir(-1, -0.4))
 # victim launched into the piranha pool
 # lands sitting in the water, chest-deep - water surface is at z = 1.42
 land = (PPOOL[0] + 0.9, PPOOL[1] + 0.7, 0.85)

@@ -28,7 +28,6 @@ namespace BackyardBet
             ("Die",       0.008f),
             ("Card",      0.002f),
             ("Bottle",    0.350f),
-            ("Potato",    0.180f),
             ("Patty",     0.120f),
             ("Stone",     0.900f),
         };
@@ -374,11 +373,10 @@ namespace BackyardBet
                     }
                 }
                 // Дым такой же неподвижный, как было пламя: гроздь шаров над
-                // мангалом, шар над трубой, шар у дула. Меши прячем, ставим
-                // струю из частиц. У мангала четыре шара в одной точке -
-                // хватит одной струи, остальные просто убираем.
-                else if (s.StartsWith("GSmoke") || s == "ChimneySmoke" ||
-                         s == "MuzzleSmoke")
+                // мангалом и шар над трубой. Меши прячем, ставим струю из
+                // частиц. У мангала четыре шара в одной точке - хватит одной
+                // струи, остальные просто убираем.
+                else if (s.StartsWith("GSmoke") || s == "ChimneySmoke")
                 {
                     bool first = s != "GSmoke1" && s != "GSmoke2" && s != "GSmoke3";
                     if (!first)
@@ -388,9 +386,7 @@ namespace BackyardBet
                     }
                     else if (go.GetComponentInChildren<SmokePlume>() == null)
                     {
-                        float sz = s == "ChimneySmoke" ? 1.3f : 0.75f;
-                        float dens = s == "MuzzleSmoke" ? 0.16f : 0.24f;
-                        SmokePlume.Replace(go, sz, dens);
+                        SmokePlume.Replace(go, s == "ChimneySmoke" ? 1.3f : 0.75f, 0.24f);
                         n++;
                     }
                 }
