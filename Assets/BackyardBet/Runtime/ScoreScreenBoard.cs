@@ -38,8 +38,25 @@ namespace BackyardBet
 
             Vector3 front = FrontDirection(rend.bounds.center);
             Measure(out float w, out float h);
+            Matte(rend);
 
             Build(rend.bounds.center + front * (Thickness() * 0.5f + lift), front, w, h);
+        }
+
+        /// <summary>
+        /// Погасить блик на экране.
+        ///
+        /// Материал экрана глянцевый, и солнце оставляет на нём световое
+        /// пятно ровно поверх строк со счётом. Настоящие экраны матовые -
+        /// делаем таким же, иначе табло нечитаемо в ясный день.
+        /// </summary>
+        static void Matte(Renderer rend)
+        {
+            var m = rend.material;
+            if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", 0f);
+            if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0f);
+            if (m.HasProperty("_SpecColor")) m.SetColor("_SpecColor", Color.black);
+            if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0f);
         }
 
         /// <summary>
@@ -104,7 +121,11 @@ namespace BackyardBet
         void Build(Vector3 at, Vector3 front, float width, float height)
         {
             var go = new GameObject("ScoreCanvas");
-            go.transform.SetPositionAndRotation(at, Quaternion.LookRotation(front, Vector3.up));
+            // Холст в мире читается с той стороны, куда смотрит камера, а не
+            // с той, куда торчит его нормаль: у холста с поворотом по
+            // умолчанию нормаль направлена от зрителя. Развернёшь его «лицом
+            // к игроку» - увидишь изнанку, а на ней надписи зеркальные.
+            go.transform.SetPositionAndRotation(at, Quaternion.LookRotation(-front, Vector3.up));
             go.transform.SetParent(transform, true);
 
             var canvas = go.AddComponent<Canvas>();
