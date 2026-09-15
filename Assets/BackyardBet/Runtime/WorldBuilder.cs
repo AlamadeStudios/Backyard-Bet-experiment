@@ -373,6 +373,27 @@ namespace BackyardBet
                         n++;
                     }
                 }
+                // Дым такой же неподвижный, как было пламя: гроздь шаров над
+                // мангалом, шар над трубой, шар у дула. Меши прячем, ставим
+                // струю из частиц. У мангала четыре шара в одной точке -
+                // хватит одной струи, остальные просто убираем.
+                else if (s.StartsWith("GSmoke") || s == "ChimneySmoke" ||
+                         s == "MuzzleSmoke")
+                {
+                    bool first = s != "GSmoke1" && s != "GSmoke2" && s != "GSmoke3";
+                    if (!first)
+                    {
+                        foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+                            r.enabled = false;
+                    }
+                    else if (go.GetComponentInChildren<SmokePlume>() == null)
+                    {
+                        float sz = s == "ChimneySmoke" ? 1.3f : 0.75f;
+                        float dens = s == "MuzzleSmoke" ? 0.16f : 0.24f;
+                        SmokePlume.Replace(go, sz, dens);
+                        n++;
+                    }
+                }
                 else if (s.StartsWith("AxeTarget"))
                 {
                     if (go.GetComponent<SpinAnimator>() == null)
@@ -396,6 +417,23 @@ namespace BackyardBet
                         var sw = go.AddComponent<SwayAnimator>();
                         sw.degrees = s.StartsWith("Flag") ? 9f : 3f;
                         sw.speed = s.StartsWith("Flag") ? 1.8f : 0.9f;
+                        n++;
+                    }
+                }
+                // Кроны и кусты стояли неподвижно, и двор выглядел
+                // застывшим. Качание еле заметное - деревья должны дышать на
+                // ветру, а не махать ветвями.
+                else if (s.StartsWith("Canopy") || s.StartsWith("YardCanopy") ||
+                         s.StartsWith("HamCanopy") || s.StartsWith("DBush"))
+                {
+                    if (go.GetComponent<SwayAnimator>() == null)
+                    {
+                        var sw = go.AddComponent<SwayAnimator>();
+                        bool bush = s.StartsWith("DBush");
+                        sw.degrees = bush ? 1.1f : 1.8f;
+                        sw.speed = bush ? 0.75f : 0.45f;   // крупное качается медленнее
+                        sw.axis = Vector3.forward;
+                        sw.worldAxis = true;               // ветер один на весь двор
                         n++;
                     }
                 }

@@ -248,6 +248,9 @@ namespace BackyardBet
         static Material _add, _soft;
         static Texture2D _dot;
 
+        /// <summary>Мягкий материал частицы - им же рисует дым из SmokePlume.</summary>
+        internal static Material SoftParticle => SoftMaterial;
+
         static Material AdditiveMaterial
         {
             get
