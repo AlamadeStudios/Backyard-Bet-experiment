@@ -456,19 +456,30 @@ def build_house():
          (HX + win_cx, win_w, win_z - win_h * 0.5, win_z + win_h * 0.5)])
     obj_from(bm_box(HW, WALL, HH, 0.10), "HouseBackWall", mat['wall'],
              loc=(HX, back_y, floor_z + HH * 0.5))
+    # Боковые стены во всю глубину коробки. Раньше они были короче на две
+    # толщины стены, и между ними, фасадом и задней стеной зияла щель в
+    # 0.2 м на всю высоту - изнутри сквозь неё был виден двор.
     for sx in (-1, 1):
-        obj_from(bm_box(WALL, HD - 2 * WALL, HH, 0.10), "HouseSideWall", mat['wall'],
+        obj_from(bm_box(WALL, HD + WALL, HH, 0.10), "HouseSideWall", mat['wall'],
                  loc=(HX + sx * (HW * 0.5 - WALL * 0.5), HY, floor_z + HH * 0.5))
-    obj_from(bm_box(HW - 2 * WALL, HD - 2 * WALL, 0.16, 0.04), "HouseWoodFloor", mat['lane'],
+    # Пол до внутренних граней стен, а не до их осей: иначе по периметру
+    # оставалась щель и было видно фундамент.
+    obj_from(bm_box(HW - 2 * WALL, HD - WALL, 0.16, 0.04), "HouseWoodFloor", mat['lane'],
              loc=(HX, HY, floor_z + 0.08))
+    # Потолок. Без него комната смотрит прямо в изнанку крыши, а из неё
+    # торчит дымоход - труба стоит ровно над жилой частью.
+    obj_from(bm_box(HW - 2 * WALL, HD - WALL, 0.24, 0.05), "HouseCeiling", mat['wall2'],
+             loc=(HX, HY, floor_z + HH - 0.12))
     for sx in (-1, 1):
         for sy in (-1, 1):
             obj_from(bm_box(0.55, 0.55, HH, 0.06), "Corner", mat['wall2'],
                      loc=(HX + sx * HW * 0.5, HY + sy * HD * 0.5, 0.6 + HH * 0.5))
     roof_p = [(-(HD * 0.5 + 1.4), -0.42), ((HD * 0.5 + 1.4), -0.42),
               ((HD * 0.5 + 1.4), 0.06), (0.0, 3.6), (-(HD * 0.5 + 1.4), 0.06)]
-    obj_from(bm_prism(roof_p, HW + 2.8, 0.12), "Roof", mat['roof'],
-             loc=(HX, HY, 0.6 + HH), rot=(0, 0, math.radians(90)))
+    # Свес только влево: справа вплотную стоит пристройка, и симметричный
+    # свес влезал в неё, а её крыша - в жилую комнату.
+    obj_from(bm_prism(roof_p, HW + 1.4, 0.12), "Roof", mat['roof'],
+             loc=(HX - 0.7, HY, 0.6 + HH), rot=(0, 0, math.radians(90)))
     obj_from(bm_box(1.4, 1.4, 5.0, 0.10), "Chimney", mat['stone'],
              loc=(HX - 5.0, HY + 2.6, 0.6 + HH + 1.4))
     # ---- patio slab in front of the house
@@ -527,8 +538,10 @@ def build_house():
              loc=(acx, acy, 0.35 + AH + 0.17))
     aroof = [(-(ad * 0.5 + 0.9), -0.30), ((ad * 0.5 + 0.9), -0.30),
              ((ad * 0.5 + 0.9), 0.04), (0.0, 2.1), (-(ad * 0.5 + 0.9), 0.04)]
-    obj_from(bm_prism(aroof, aw + 1.6, 0.10), "AnnexRoof", mat['roof'],
-             loc=(acx, acy, 0.35 + AH + 0.34), rot=(0, 0, math.radians(90)))
+    # Свес только наружу: слева стена жилого дома, и симметричный свес
+    # протыкал её, повисая красным скатом посреди комнаты.
+    obj_from(bm_prism(aroof, aw + 0.8, 0.10), "AnnexRoof", mat['roof'],
+             loc=(acx + 0.4, acy, 0.35 + AH + 0.34), rot=(0, 0, math.radians(90)))
     # Front door: pivot, named action and custom properties survive FBX export
     # and become an obvious Unity interactable/animation anchor.
     # Рама проёма: два косяка и перемычка. Раньше здесь стояла сплошная
@@ -550,11 +563,8 @@ def build_house():
                     loc=(HX, front_y - 0.10, floor_z + door_h * 0.5))
     door.parent = hinge
     door.matrix_parent_inverse = Matrix.Translation(-hinge.location)
-    # raised panels and handle, parented with the leaf rather than left behind
-    for z in (1.05, 2.30):
-        panel = obj_from(bm_box(1.62, 0.035, 0.82, 0.025), "DoorPanel", mat['wall2'],
-                         loc=(HX, front_y - 0.195, floor_z + z))
-        panel.parent = hinge; panel.matrix_parent_inverse = Matrix.Translation(-hinge.location)
+    # Филёнки убраны: две коричневые накладки читались как приклеенные
+    # доски, а не как рельеф двери. Осталась ручка.
     handle = obj_from(bm_cyl(0.075, 0.075, 0.12, 12, 0.015), "DoorHandle", mat['chrome'],
                       loc=(HX + 0.68, front_y - 0.23, floor_z + 1.65),
                       rot=(math.radians(90), 0, 0), smooth=True, angle=60)
@@ -1278,9 +1288,14 @@ def build_bowling():
                        ((1.6, 1.0, 0.12), (0, 0, 0.40))], 0.05),
              "BallReturn", mat['metal_d'], loc=(LANE_X0 - 2.6, LANE_Y - 2.1, 0.75))
     # hanging lamps
+    # Шнур считаем от потолка до плафона, а не на глаз: раньше он кончался
+    # на 4.1 м при потолке 4.545 и лампы висели в воздухе.
+    ceil_bottom = 0.35 + AH + 0.17 - 0.175
+    shade_top = 2.85 + 0.17
+    cord_len = ceil_bottom - shade_top
     for lx in (12.0, 17.0, 22.0):
-        obj_from(bm_cyl(0.03, 0.03, 1.1, 8, 0.0), "LampCord", mat['black'],
-                 loc=(lx, LANE_Y, 3.55), smooth=True, angle=60)
+        obj_from(bm_cyl(0.03, 0.03, cord_len, 8, 0.0), "LampCord", mat['black'],
+                 loc=(lx, LANE_Y, (ceil_bottom + shade_top) * 0.5), smooth=True, angle=60)
         obj_from(bm_cyls([(0.42, 0.20, 0.34, (0, 0, 0), 20)], 0.03), "LampShade",
                  mat['red'], loc=(lx, LANE_Y, 2.85), smooth=True, angle=50)
         obj_from(bm_blobs([(0.14, (0, 0, 0), 1.0)], 0, 1, 0, 2), "LampBulb",
