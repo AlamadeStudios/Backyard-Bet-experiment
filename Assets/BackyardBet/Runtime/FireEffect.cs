@@ -109,8 +109,8 @@ namespace BackyardBet
             var col = ps.colorOverLifetime;
             col.enabled = true;
             col.color = Gradient(
-                new[] { new Color(1f, 0.92f, 0.6f), new Color(1f, 0.5f, 0.1f) },
-                new[] { 0f, 0f, 0.12f, 0.9f, 1f, 0f });
+                new[] { new Color(1f, 0.97f, 0.82f), new Color(1f, 0.62f, 0.16f) },
+                new[] { 0f, 0f, 0.1f, 1f, 1f, 0f });
 
             Render(ps, additive: true, stretch: true);
         }
@@ -255,7 +255,7 @@ namespace BackyardBet
         {
             get
             {
-                if (_add == null) _add = Make("Legacy Shaders/Particles/Additive", Color.white);
+                if (_add == null) _add = Make();
                 return _add;
             }
         }
@@ -264,9 +264,7 @@ namespace BackyardBet
         {
             get
             {
-                if (_soft == null)
-                    _soft = Make("Legacy Shaders/Particles/Alpha Blended Premultiply",
-                                 Color.white);
+                if (_soft == null) _soft = Make();
                 return _soft;
             }
         }
@@ -274,23 +272,21 @@ namespace BackyardBet
         /// <summary>
         /// Материал частицы.
         ///
-        /// В собранной игре встроенный шейдер может быть вырезан, если на него
-        /// никто не ссылается из ассетов, - поэтому есть запасной. Sprites
-        /// /Default в списке всегда включаемых, до него сборка доедет всегда.
-        /// Если упали на запасной, пишем об этом: огонь будет выглядеть иначе,
-        /// и лучше знать почему.
+        /// Берём Sprites/Default, а не шейдеры из Legacy Shaders. Проверка на
+        /// собранной игре показала: оба Legacy-шейдера из сборки вырезаны -
+        /// на них не ссылается ни один ассет проекта, - и огонь в exe
+        /// рисовался запасным вариантом, то есть иначе, чем в редакторе.
+        ///
+        /// Sprites/Default в списке всегда включаемых шейдеров, поэтому он
+        /// есть везде. Одинаковая картинка в редакторе и в игре важнее, чем
+        /// аддитивное свечение искр: его мы возмещаем яркостью цвета.
         /// </summary>
-        static Material Make(string shaderName, Color c)
+        static Material Make()
         {
-            var sh = Shader.Find(shaderName);
+            var sh = Shader.Find("Sprites/Default");
             if (sh == null)
-            {
-                sh = Shader.Find("Particles/Standard Unlit") ?? Shader.Find("Sprites/Default");
-                Debug.LogWarning("[Backyard Bet] Шейдер " + shaderName +
-                                 " недоступен, огонь рисуется запасным " +
-                                 (sh != null ? sh.name : "никаким"));
-            }
-            return new Material(sh) { mainTexture = Dot, color = c };
+                Debug.LogError("[Backyard Bet] Нет шейдера Sprites/Default - огня не будет.");
+            return new Material(sh) { mainTexture = Dot, color = Color.white };
         }
 
         /// <summary>
